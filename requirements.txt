@@ -1,0 +1,28 @@
+# Arduino Server Dependencies
+# Installare con: pip install -r requirements.txt
+
+# Arduino App Bricks (audio, bricks, web_ui)
+arduino_app_bricks[microphone,stream,web_ui] @ git+https://github.com/arduino/app-bricks-py.git
+
+# Core audio processing
+numpy>=1.26
+websockets>=14.0
+
+# Encryption (for BPP codec)
+cryptography>=42.0
+
+# REST API + HTTP
+flask>=2.3.0
+requests>=2.31.0
+
+# Machine learning (Isolation Forest)
+scikit-learn>=1.3.0
+
+# Firebase Realtime Database
+firebase-admin>=6.2.0
+
+# Data processing
+pandas>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0

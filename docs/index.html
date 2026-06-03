@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElderSafeFinal - Dashboard</title>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="auth-container" class="auth-container">
+        <div class="auth-box">
+            <h1>🏡 ElderSafeFinal</h1>
+            <p>Sistema di monitoraggio per anziani</p>
+
+            <div id="login-form" class="form">
+                <h2>Accedi</h2>
+                <input type="email" id="email" placeholder="Email" required>
+                <input type="password" id="password" placeholder="Password" required>
+                <button id="login-btn" class="btn-primary">Accedi</button>
+                <p class="toggle-form">Non hai un account? <a href="#" onclick="toggleAuth(event)">Registrati</a></p>
+                <div id="login-error" class="error"></div>
+            </div>
+
+            <div id="register-form" class="form hidden">
+                <h2>Registrazione</h2>
+                <input type="email" id="register-email" placeholder="Email" required>
+                <input type="password" id="register-password" placeholder="Password (minimo 6 caratteri)" required>
+                <input type="password" id="register-password-confirm" placeholder="Conferma password" required>
+                <button id="register-btn" class="btn-primary">Registrati</button>
+                <p class="toggle-form">Hai già un account? <a href="#" onclick="toggleAuth(event)">Accedi</a></p>
+                <div id="register-error" class="error"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="app-container" class="app-container hidden">
+        <header class="header">
+            <div class="header-left">
+                <h1>🏡 ElderSafeFinal</h1>
+            </div>
+            <div class="header-right">
+                <span id="user-email" class="user-email"></span>
+                <button id="logout-btn" class="btn-small">Esci</button>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Config Section -->
+            <section class="section config-section">
+                <h2>⚙️ Configurazione</h2>
+                <div class="config-form">
+                    <label>IP/Porta Arduino:</label>
+                    <input type="text" id="arduino-ip" placeholder="es: 192.168.1.42" value="localhost">
+                    <input type="number" id="arduino-port" placeholder="es: 8000" value="8000">
+                    <button class="btn-small" onclick="testConnection()">Test Connessione</button>
+                    <div id="connection-status" class="status-indicator"></div>
+                </div>
+            </section>
+
+            <!-- Status Section -->
+            <section class="section status-section">
+                <h2>📊 Status Sistema</h2>
+                <div class="status-grid">
+                    <div class="status-card">
+                        <div class="status-label">Sistema</div>
+                        <div id="status-armed" class="status-value armed">ATTIVO</div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-armed" onchange="toggleArmed()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-label">Keyword Spotting</div>
+                        <div id="status-keyword" class="status-value enabled">ABILITATO</div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-keyword" onchange="toggleKeywordSpotting()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-label">Sound Classification</div>
+                        <div id="status-sound" class="status-value enabled">ABILITATO</div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-sound" onchange="toggleSoundClassification()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-label">Anomaly Detection</div>
+                        <div id="status-anomaly" class="status-value enabled">ABILITATO</div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-anomaly" onchange="toggleAnomalyDetection()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Stats Section -->
+            <section class="section stats-section">
+                <h2>📈 Statistiche</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number" id="stat-total">0</div>
+                        <div class="stat-label">Eventi Totali</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="stat-entries">0</div>
+                        <div class="stat-label">Entrate</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="stat-exits">0</div>
+                        <div class="stat-label">Uscite</div>
+                    </div>
+                    <div class="stat-card alert">
+                        <div class="stat-number" id="stat-alarms">0</div>
+                        <div class="stat-label">Allarmi</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Events Timeline -->
+            <section class="section events-section">
+                <h2>📅 Timeline Eventi</h2>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" onclick="filterEvents('all')">Tutti</button>
+                    <button class="filter-btn" onclick="filterEvents('entry')">Entrate</button>
+                    <button class="filter-btn" onclick="filterEvents('exit')">Uscite</button>
+                    <button class="filter-btn" onclick="filterEvents('alarm')">Allarmi</button>
+                </div>
+                <div id="events-list" class="events-list">
+                    <p class="loading">Caricamento eventi...</p>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>ElderSafeFinal • Ultimo aggiornamento: <span id="last-update">--:--:--</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
