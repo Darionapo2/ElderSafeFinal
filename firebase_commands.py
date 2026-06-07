@@ -35,9 +35,14 @@ def setup_firebase_command_listener(state: SystemState):
                 if not data:
                     return
 
+                # Ensure data is a dictionary
+                if not isinstance(data, dict):
+                    log.debug(f"Ignoring non-dict data: {type(data)}")
+                    return
+
                 # Process each command
                 for cmd_id, cmd_data in data.items():
-                    if not cmd_data:
+                    if not cmd_data or not isinstance(cmd_data, dict):
                         continue
 
                     # Skip if already processed

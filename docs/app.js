@@ -172,11 +172,15 @@ function setupFirebaseListeners() {
 
 function updateTogglesFromStatus() {
     // Update toggle UI from statusCache
+    // But DO NOT resync while a command is in progress
     if (!statusCache) return;
 
-    document.getElementById('toggle-armed').checked = statusCache.armed;
-    document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
-    document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
+    // Only sync if no command is in progress
+    if (Object.keys(commandInProgress).length === 0) {
+        document.getElementById('toggle-armed').checked = statusCache.armed;
+        document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
+        document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
+    }
 }
 
 function updateStatusDisplay() {
