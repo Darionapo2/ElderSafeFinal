@@ -17,11 +17,10 @@ const database = firebase.database();
 
 // ── State ───────────────────────────────────────────────────────────────────
 let currentUser = null;
-let arduinoIp = localStorage.getItem('arduinoIp') || 'localhost';
-let arduinoPort = localStorage.getItem('arduinoPort') || '8000';
 let isConnected = false;
 let currentFilter = 'all';
 let statusCache = {};
+let commandInProgress = {};
 
 // ── UI Elements ─────────────────────────────────────────────────────────────
 const authContainer = document.getElementById('auth-container');
@@ -37,9 +36,6 @@ const loginBtn = document.getElementById('login-btn');
 const registerBtn = document.getElementById('register-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const userEmailSpan = document.getElementById('user-email');
-const arduinoIpInput = document.getElementById('arduino-ip');
-const arduinoPortInput = document.getElementById('arduino-port');
-const connectionStatus = document.getElementById('connection-status');
 const eventsList = document.getElementById('events-list');
 
 // ── Auth Handlers ───────────────────────────────────────────────────────────
@@ -145,80 +141,42 @@ function showError(elementId, message) {
     }, 5000);
 }
 
-// ── Arduino Connection ──────────────────────────────────────────────────────
-function getArduinoUrl() {
-    return `http://${arduinoIp}:${arduinoPort}`;
-}
+// ── Firebase Listeners ──────────────────────────────────────────────────────
+function setupFirebaseListeners() {
+    // Listen to Firebase for real-time updates
+    if (!currentUser) return;
 
-async function testConnection() {
-    const ip = arduinoIpInput.value.trim();
-    const port = arduinoPortInput.value.trim();
-
-    if (!ip || !port) {
-        showError('connection-status', 'IP e porta sono obbligatori');
-        return;
-    }
-
-    arduinoIp = ip;
-    arduinoPort = port;
-    localStorage.setItem('arduinoIp', ip);
-    localStorage.setItem('arduinoPort', port);
-
-    try {
-        const response = await fetch(`${getArduinoUrl()}/api/health`, { mode: 'cors' });
-        if (response.ok) {
-            connectionStatus.className = 'connection-status connected';
-            connectionStatus.textContent = '✓ Connesso';
+    // Listen to status updates
+    database.ref('status').on('value', (snapshot) => {
+        const status = snapshot.val();
+        if (status) {
+            statusCache = status;
+            updateStatusDisplay();
+            updateStats();
+            updateLastUpdate();
             isConnected = true;
-            loadStatus();
-            loadEvents();
         }
-    } catch (error) {
-        connectionStatus.className = 'connection-status disconnected';
-        connectionStatus.textContent = '✗ Disconnesso';
-        isConnected = false;
-    }
+    });
+
+    // Listen to events updates
+    database.ref('events').limitToLast(100).on('value', (snapshot) => {
+        const eventsObj = snapshot.val();
+        if (eventsObj) {
+            const events = Object.values(eventsObj).sort((a, b) =>
+                new Date(b.datetime) - new Date(a.datetime)
+            );
+            displayEvents(events);
+        }
+    });
 }
 
-// ── API Calls ───────────────────────────────────────────────────────────────
-async function apiCall(endpoint, method = 'GET', body = null) {
-    try {
-        const options = {
-            method,
-            mode: 'cors',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        };
+function updateTogglesFromStatus() {
+    // Update toggle UI from statusCache
+    if (!statusCache) return;
 
-        if (body) {
-            options.body = JSON.stringify(body);
-        }
-
-        const response = await fetch(`${getArduinoUrl()}${endpoint}`, options);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return await response.json();
-    } catch (error) {
-        console.error(`API call failed: ${endpoint}`, error);
-        isConnected = false;
-        updateConnectionStatus();
-        return null;
-    }
-}
-
-async function loadStatus() {
-    const status = await apiCall('/api/status');
-    if (!status) return;
-
-    statusCache = status;
-    document.getElementById('toggle-armed').checked = status.armed;
-    document.getElementById('toggle-keyword').checked = status.keyword_spotting;
-    document.getElementById('toggle-sound').checked = status.sound_classification;
-    document.getElementById('toggle-anomaly').checked = status.anomaly_detection;
-
-    updateStatusDisplay();
-    updateStats();
-    updateLastUpdate();
+    document.getElementById('toggle-armed').checked = statusCache.armed;
+    document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
+    document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
 }
 
 function updateStatusDisplay() {
@@ -248,17 +206,18 @@ function updateStats() {
     document.getElementById('stat-alarms').textContent = statusCache.alarms || 0;
 }
 
-async function loadEvents(type = currentFilter) {
-    currentFilter = type;
-    const query = type !== 'all' ? `?type=${type}&limit=100` : '?limit=100';
-    const data = await apiCall(`/api/events${query}`);
+function displayEvents(events = []) {
+    // Display filtered events in UI
+    const filtered = currentFilter === 'all'
+        ? events
+        : events.filter(e => e.direction === currentFilter);
 
-    if (!data || !data.rows) {
+    if (!filtered || filtered.length === 0) {
         eventsList.innerHTML = '<p class="loading">Nessun evento</p>';
         return;
     }
 
-    eventsList.innerHTML = data.rows.map(event => createEventElement(event)).join('');
+    eventsList.innerHTML = filtered.map(event => createEventElement(event)).join('');
 }
 
 function createEventElement(event) {
@@ -296,40 +255,91 @@ function createEventElement(event) {
 }
 
 // ── Controls ────────────────────────────────────────────────────────────────
-async function toggleArmed() {
+function sendCommand(toggleId, commandType, value) {
+    // Send command to Arduino via Firebase
+    const cmdId = Date.now().toString();
+    const toggleElement = document.getElementById(toggleId);
+
+    if (commandInProgress[commandType]) {
+        console.log(`Command ${commandType} already in progress`);
+        if (toggleElement) toggleElement.checked = !value;
+        return;
+    }
+
+    commandInProgress[commandType] = true;
+    if (toggleElement) toggleElement.disabled = true;
+
+    database.ref(`commands/${cmdId}`).set({
+        type: commandType,
+        value: value,
+        source: "dashboard",
+        timestamp: new Date().toISOString(),
+        status: "pending"
+    });
+
+    // Wait for response (max 5 seconds)
+    let checkCount = 0;
+    const checkInterval = setInterval(() => {
+        checkCount++;
+        database.ref(`commands/${cmdId}`).once('value', (snapshot) => {
+            const cmd = snapshot.val();
+            if (cmd && cmd.status !== "pending") {
+                clearInterval(checkInterval);
+                commandInProgress[commandType] = false;
+                if (toggleElement) toggleElement.disabled = false;
+
+                if (cmd.status === "completed") {
+                    console.log(`✓ ${cmd.response}`);
+                } else if (cmd.status === "failed") {
+                    console.error(`✗ ${cmd.error}`);
+                    if (toggleElement) toggleElement.checked = !value;
+                }
+
+                // Re-sync status from Firebase
+                updateTogglesFromStatus();
+            }
+        });
+
+        if (checkCount > 25) {  // 5 seconds timeout (25 * 200ms)
+            clearInterval(checkInterval);
+            commandInProgress[commandType] = false;
+            if (toggleElement) toggleElement.disabled = false;
+            console.warn(`⏱️ Command ${commandType} timeout`);
+            if (toggleElement) toggleElement.checked = !value;
+        }
+    }, 200);
+}
+
+function toggleArmed() {
     const armed = document.getElementById('toggle-armed').checked;
-    database.ref('commands/armed').set(armed);
+    sendCommand('toggle-armed', 'set_armed', armed);
 }
 
-async function toggleKeywordSpotting() {
+function toggleKeywordSpotting() {
     const enabled = document.getElementById('toggle-keyword').checked;
-    database.ref('commands/keyword_spotting').set(enabled);
+    sendCommand('toggle-keyword', 'set_keyword_spotting', enabled);
 }
 
-async function toggleSoundClassification() {
-    const enabled = document.getElementById('toggle-sound').checked;
-    database.ref('commands/sound_classification').set(enabled);
-}
-
-async function toggleAnomalyDetection() {
+function toggleAnomalyDetection() {
     const enabled = document.getElementById('toggle-anomaly').checked;
-    database.ref('commands/anomaly_detection').set(enabled);
+    sendCommand('toggle-anomaly', 'set_anomaly_detection', enabled);
 }
 
 function filterEvents(type) {
+    currentFilter = type;
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
     event.target.classList.add('active');
-    loadEvents(type);
-}
 
-function updateConnectionStatus() {
-    if (isConnected) {
-        connectionStatus.className = 'connection-status connected';
-        connectionStatus.textContent = '✓ Connesso';
-    } else {
-        connectionStatus.className = 'connection-status disconnected';
-        connectionStatus.textContent = '✗ Disconnesso';
-    }
+    // Get current events from Firebase and filter
+    database.ref('events').limitToLast(100).once('value', (snapshot) => {
+        const eventsObj = snapshot.val();
+        if (eventsObj) {
+            const events = Object.values(eventsObj).sort((a, b) =>
+                new Date(b.datetime) - new Date(a.datetime)
+            );
+            displayEvents(events);
+        }
+    });
 }
 
 function updateLastUpdate() {
@@ -339,29 +349,15 @@ function updateLastUpdate() {
 
 // ── Initialize App ──────────────────────────────────────────────────────────
 function initializeApp() {
-    arduinoIpInput.value = arduinoIp;
-    arduinoPortInput.value = arduinoPort;
+    if (!currentUser) return;
 
-    // Initial connection test
-    testConnection();
+    // Setup real-time Firebase listeners
+    setupFirebaseListeners();
 
-    // Refresh every 10 seconds
-    setInterval(() => {
-        if (isConnected) {
-            loadStatus();
-            loadEvents(currentFilter);
-        }
-    }, 10000);
-
-    // Listen to Firebase events for real-time updates
-    if (currentUser) {
-        const eventsRef = database.ref(`elderly/${currentUser.uid}/events`);
-        eventsRef.limitToLast(100).on('value', (snapshot) => {
-            if (snapshot.exists()) {
-                updateLastUpdate();
-            }
-        });
-    }
+    // Update toggles from current status
+    setTimeout(() => {
+        updateTogglesFromStatus();
+    }, 1000);
 }
 
 // ── On Load ─────────────────────────────────────────────────────────────────

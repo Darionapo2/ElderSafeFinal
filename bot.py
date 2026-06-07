@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-ElderSafeFinal Telegram Bot - Optional Component
-Polls Telegram for commands and sends them to Arduino.
+ElderSafeFinal Telegram Bot
+Polls Telegram for commands and sends them to Arduino via Firebase.
 Can run on any machine (RPi, laptop, cloud).
 """
 
 import os
-import json
 import time
 import logging
 import requests
+from datetime import datetime
 from dotenv import load_dotenv
 
 try:
@@ -18,6 +18,7 @@ try:
     FIREBASE_AVAILABLE = True
 except ImportError:
     FIREBASE_AVAILABLE = False
+    log.error("firebase-admin not installed")
 
 load_dotenv()
 
@@ -30,47 +31,24 @@ log = logging.getLogger(__name__)
 # Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-ARDUINO_IP = os.getenv("ARDUINO_IP", "localhost")
-ARDUINO_PORT = os.getenv("ARDUINO_PORT", "8000")
-
-ARDUINO_URL = f"http://{ARDUINO_IP}:{ARDUINO_PORT}"
+FIREBASE_CREDS = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
+FIREBASE_DB_URL = os.getenv("FIREBASE_DATABASE_URL", "")
 
 if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
     log.error("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in .env")
     exit(1)
 
+if not FIREBASE_AVAILABLE or not FIREBASE_CREDS or not FIREBASE_DB_URL:
+    log.error("Firebase must be configured (firebase-admin, credentials, DB URL)")
+    exit(1)
 
-def get_arduino_status():
-    """Get Arduino system status."""
-    try:
-        response = requests.get(f"{ARDUINO_URL}/api/status", timeout=5)
-        if response.ok:
-            return response.json()
-    except Exception as e:
-        log.warning(f"Failed to get Arduino status: {e}")
-    return None
+# Initialize Firebase
+if not firebase_admin._apps:
+    cred = credentials.Certificate(FIREBASE_CREDS)
+    firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_DB_URL})
 
-
-def control_arduino_firebase(command: str, value: bool):
-    """Send control command via Firebase."""
-    if not FIREBASE_AVAILABLE:
-        log.warning("Firebase not available")
-        return False
-
-    try:
-        if not firebase_admin._apps:
-            creds_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
-            db_url = os.getenv("FIREBASE_DATABASE_URL")
-            if creds_path and db_url:
-                cred = credentials.Certificate(creds_path)
-                firebase_admin.initialize_app(cred, {"databaseURL": db_url})
-
-        db.reference(f"commands/{command}").set(value)
-        log.info(f"Firebase command sent: {command} = {value}")
-        return True
-    except Exception as e:
-        log.error(f"Failed to send Firebase command: {e}")
-        return False
+log.info(f"✓ Firebase initialized")
+log.info(f"✓ Telegram bot token loaded")
 
 
 def send_telegram_message(text: str):
@@ -81,27 +59,36 @@ def send_telegram_message(text: str):
             json={"chat_id": TELEGRAM_CHAT_ID, "text": text},
             timeout=5
         )
+        log.debug(f"Message sent to Telegram")
     except Exception as e:
         log.error(f"Failed to send Telegram message: {e}")
+
+
+def get_firebase_status() -> dict:
+    """Get system status from Firebase."""
+    try:
+        status = db.reference("status").get().val()
+        return status if status else {}
+    except Exception as e:
+        log.error(f"Failed to read status from Firebase: {e}")
+        return {}
 
 
 def format_status_message(status: dict) -> str:
     """Format status as readable message."""
     if not status:
-        return "❌ Arduino non raggiungibile"
+        return "❌ Sistema non disponibile"
 
     armed_status = "🟢 ATTIVO" if status.get("armed") else "🔴 DISATTIVATO"
     keyword_status = "✓" if status.get("keyword_spotting") else "✗"
-    sound_status = "✓" if status.get("sound_classification") else "✗"
     anomaly_status = "✓" if status.get("anomaly_detection") else "✗"
 
     return f"""
-📊 Status Arduino:
+📊 Status Sistema:
 
 {armed_status}
 
 Keyword Spotting: {keyword_status}
-Sound Classification: {sound_status}
 Anomaly Detection: {anomaly_status}
 
 Ultimi Eventi:
@@ -109,7 +96,54 @@ Ultimi Eventi:
 • Entrate: {status.get('entries', 0)}
 • Uscite: {status.get('exits', 0)}
 • Allarmi: {status.get('alarms', 0)}
+
+⏱️ Ultimo aggiornamento: {status.get('last_update', 'N/A')}
 """
+
+
+def send_firebase_command(cmd_type: str, value: bool, timeout: int = 5) -> str:
+    """
+    Send command via Firebase and wait for response.
+
+    Returns response from Arduino or timeout message.
+    """
+    try:
+        cmd_id = str(int(time.time() * 1000))
+
+        # Write command to Firebase
+        db.reference(f"commands/{cmd_id}").set({
+            "type": cmd_type,
+            "value": value,
+            "source": "telegram",
+            "timestamp": datetime.now().isoformat(),
+            "status": "pending"
+        })
+
+        log.info(f"Command {cmd_id} sent: {cmd_type} = {value}")
+
+        # Wait for response (poll Firebase)
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                cmd = db.reference(f"commands/{cmd_id}").get().val()
+                if cmd:
+                    status = cmd.get("status")
+                    if status == "completed":
+                        response = cmd.get("response", "Comando eseguito")
+                        return f"✓ {response}"
+                    elif status == "failed":
+                        error = cmd.get("error", "Errore sconosciuto")
+                        return f"✗ Errore: {error}"
+            except Exception as e:
+                log.debug(f"Error reading command response: {e}")
+
+            time.sleep(0.2)  # Poll every 200ms
+
+        return "⏱️ Timeout: Arduino non ha risposto (comando potrebbe essere in esecuzione)"
+
+    except Exception as e:
+        log.error(f"Failed to send Firebase command: {e}")
+        return f"✗ Errore: {str(e)}"
 
 
 def process_command(message: str) -> str:
@@ -124,8 +158,6 @@ Comandi disponibili:
 /status - Mostra status sistema
 /arm - Attiva sistema
 /disarm - Disattiva sistema
-/enable_sound - Abilita sound classification
-/disable_sound - Disabilita sound classification
 /enable_keyword - Abilita keyword spotting
 /disable_keyword - Disabilita keyword spotting
 /enable_anomaly - Abilita anomaly detection
@@ -133,56 +165,32 @@ Comandi disponibili:
 """
 
     elif command == "/status":
-        status = get_arduino_status()
+        status = get_firebase_status()
         return format_status_message(status)
 
     elif command in ["/arm", "/enable"]:
-        if control_arduino_firebase("armed", True):
-            return "✓ Sistema ATTIVATO (via Firebase)"
-        else:
-            return "✗ Errore nell'attivazione"
+        response = send_firebase_command("set_armed", True)
+        return response
 
     elif command in ["/disarm", "/disable"]:
-        if control_arduino_firebase("armed", False):
-            return "✓ Sistema DISATTIVATO (via Firebase)"
-        else:
-            return "✗ Errore nella disattivazione"
-
-    elif command == "/enable_sound":
-        if control_arduino_firebase("sound_classification", True):
-            return "✓ Sound classification ABILITATO"
-        else:
-            return "✗ Errore"
-
-    elif command == "/disable_sound":
-        if control_arduino_firebase("sound_classification", False):
-            return "✓ Sound classification DISABILITATO"
-        else:
-            return "✗ Errore"
+        response = send_firebase_command("set_armed", False)
+        return response
 
     elif command == "/enable_keyword":
-        if control_arduino_firebase("keyword_spotting", True):
-            return "✓ Keyword spotting ABILITATO"
-        else:
-            return "✗ Errore"
+        response = send_firebase_command("set_keyword_spotting", True)
+        return response
 
     elif command == "/disable_keyword":
-        if control_arduino_firebase("keyword_spotting", False):
-            return "✓ Keyword spotting DISABILITATO"
-        else:
-            return "✗ Errore"
+        response = send_firebase_command("set_keyword_spotting", False)
+        return response
 
     elif command == "/enable_anomaly":
-        if control_arduino_firebase("anomaly_detection", True):
-            return "✓ Anomaly detection ABILITATO"
-        else:
-            return "✗ Errore"
+        response = send_firebase_command("set_anomaly_detection", True)
+        return response
 
     elif command == "/disable_anomaly":
-        if control_arduino_firebase("anomaly_detection", False):
-            return "✓ Anomaly detection DISABILITATO"
-        else:
-            return "✗ Errore"
+        response = send_firebase_command("set_anomaly_detection", False)
+        return response
 
     else:
         return "❓ Comando non riconosciuto. Usa /help per la lista di comandi."
@@ -227,7 +235,7 @@ if __name__ == "__main__":
     log.info("=" * 70)
     log.info("ElderSafeFinal Telegram Bot")
     log.info("=" * 70)
-    log.info(f"Arduino: {ARDUINO_URL}")
+    log.info("Mode: Firebase commands")
     log.info("Polling Telegram for commands...")
     log.info("=" * 70)
 

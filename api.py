@@ -7,7 +7,6 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 from csv_handler import read_csv
 from models import SystemState
-from firebase import post_status
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +38,6 @@ def create_api(state: SystemState):
             "alarms": sum(1 for r in rows if r.get("direction") == "alarm"),
             "timestamp": datetime.now().isoformat(),
         }
-        post_status(status_data)
         return jsonify(status_data), 200
 
     @app.route("/api/events", methods=["GET"])
