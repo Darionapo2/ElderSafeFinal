@@ -45,6 +45,8 @@ const eventsList = document.getElementById('events-list');
 // ── Auth Handlers ───────────────────────────────────────────────────────────
 function toggleAuth(event) {
     event.preventDefault();
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
     loginForm.classList.toggle('hidden');
     registerForm.classList.toggle('hidden');
 }
