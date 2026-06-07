@@ -15,7 +15,7 @@ requests>=2.31.0
 # Machine learning (Isolation Forest)
 scikit-learn>=1.3.0
 
-# Firebase Realtime Database
+# Firebase Admin SDK (for command listening)
 firebase-admin>=6.2.0
 
 # Data processing

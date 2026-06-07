@@ -298,26 +298,22 @@ function createEventElement(event) {
 // ── Controls ────────────────────────────────────────────────────────────────
 async function toggleArmed() {
     const armed = document.getElementById('toggle-armed').checked;
-    await apiCall('/api/control', 'POST', { armed });
-    await loadStatus();
+    database.ref('commands/armed').set(armed);
 }
 
 async function toggleKeywordSpotting() {
     const enabled = document.getElementById('toggle-keyword').checked;
-    await apiCall('/api/control', 'POST', { keyword_spotting: enabled });
-    await loadStatus();
+    database.ref('commands/keyword_spotting').set(enabled);
 }
 
 async function toggleSoundClassification() {
     const enabled = document.getElementById('toggle-sound').checked;
-    await apiCall('/api/control', 'POST', { sound_classification: enabled });
-    await loadStatus();
+    database.ref('commands/sound_classification').set(enabled);
 }
 
 async function toggleAnomalyDetection() {
     const enabled = document.getElementById('toggle-anomaly').checked;
-    await apiCall('/api/control', 'POST', { anomaly_detection: enabled });
-    await loadStatus();
+    database.ref('commands/anomaly_detection').set(enabled);
 }
 
 function filterEvents(type) {

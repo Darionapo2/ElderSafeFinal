@@ -12,6 +12,13 @@ import logging
 import requests
 from dotenv import load_dotenv
 
+try:
+    import firebase_admin
+    from firebase_admin import credentials, db
+    FIREBASE_AVAILABLE = True
+except ImportError:
+    FIREBASE_AVAILABLE = False
+
 load_dotenv()
 
 logging.basicConfig(
@@ -44,36 +51,25 @@ def get_arduino_status():
     return None
 
 
-def control_arduino(command: str, value: bool = None):
-    """Send control command to Arduino."""
+def control_arduino_firebase(command: str, value: bool):
+    """Send control command via Firebase."""
+    if not FIREBASE_AVAILABLE:
+        log.warning("Firebase not available")
+        return False
+
     try:
-        payload = {}
+        if not firebase_admin._apps:
+            creds_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+            db_url = os.getenv("FIREBASE_DATABASE_URL")
+            if creds_path and db_url:
+                cred = credentials.Certificate(creds_path)
+                firebase_admin.initialize_app(cred, {"databaseURL": db_url})
 
-        if command == "arm":
-            payload = {"armed": True}
-        elif command == "disarm":
-            payload = {"armed": False}
-        elif command == "enable_sound":
-            payload = {"sound_classification": True}
-        elif command == "disable_sound":
-            payload = {"sound_classification": False}
-        elif command == "enable_keyword":
-            payload = {"keyword_spotting": True}
-        elif command == "disable_keyword":
-            payload = {"keyword_spotting": False}
-        elif command == "enable_anomaly":
-            payload = {"anomaly_detection": True}
-        elif command == "disable_anomaly":
-            payload = {"anomaly_detection": False}
-
-        if not payload:
-            return False
-
-        response = requests.post(f"{ARDUINO_URL}/api/control", json=payload, timeout=5)
-        return response.ok
-
+        db.reference(f"commands/{command}").set(value)
+        log.info(f"Firebase command sent: {command} = {value}")
+        return True
     except Exception as e:
-        log.error(f"Failed to control Arduino: {e}")
+        log.error(f"Failed to send Firebase command: {e}")
         return False
 
 
@@ -141,49 +137,49 @@ Comandi disponibili:
         return format_status_message(status)
 
     elif command in ["/arm", "/enable"]:
-        if control_arduino("arm"):
-            return "✓ Sistema ATTIVATO"
+        if control_arduino_firebase("armed", True):
+            return "✓ Sistema ATTIVATO (via Firebase)"
         else:
             return "✗ Errore nell'attivazione"
 
     elif command in ["/disarm", "/disable"]:
-        if control_arduino("disarm"):
-            return "✓ Sistema DISATTIVATO"
+        if control_arduino_firebase("armed", False):
+            return "✓ Sistema DISATTIVATO (via Firebase)"
         else:
             return "✗ Errore nella disattivazione"
 
     elif command == "/enable_sound":
-        if control_arduino("enable_sound"):
+        if control_arduino_firebase("sound_classification", True):
             return "✓ Sound classification ABILITATO"
         else:
             return "✗ Errore"
 
     elif command == "/disable_sound":
-        if control_arduino("disable_sound"):
+        if control_arduino_firebase("sound_classification", False):
             return "✓ Sound classification DISABILITATO"
         else:
             return "✗ Errore"
 
     elif command == "/enable_keyword":
-        if control_arduino("enable_keyword"):
+        if control_arduino_firebase("keyword_spotting", True):
             return "✓ Keyword spotting ABILITATO"
         else:
             return "✗ Errore"
 
     elif command == "/disable_keyword":
-        if control_arduino("disable_keyword"):
+        if control_arduino_firebase("keyword_spotting", False):
             return "✓ Keyword spotting DISABILITATO"
         else:
             return "✗ Errore"
 
     elif command == "/enable_anomaly":
-        if control_arduino("enable_anomaly"):
+        if control_arduino_firebase("anomaly_detection", True):
             return "✓ Anomaly detection ABILITATO"
         else:
             return "✗ Errore"
 
     elif command == "/disable_anomaly":
-        if control_arduino("disable_anomaly"):
+        if control_arduino_firebase("anomaly_detection", False):
             return "✓ Anomaly detection DISABILITATO"
         else:
             return "✗ Errore"
