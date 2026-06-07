@@ -31,19 +31,31 @@ Sistema integrato di monitoraggio per anziani che combina sound classification, 
     └────────────────────────────┘   └────────────────────┘
 ```
 
-## Componenti
+## Componenti Modulari
 
-### 1. `server.py` (Arduino)
-- Server WebSocket per audio streaming (:8080)
-- REST API per status e control (:8000)
-- Integra KeywordSpotting + AudioClassification bricks
-- Isolation Forest model per anomaly detection
-- CSV logging entrate/uscite
-- POST alerts a Telegram quando rileva:
-  - Keyword "aiuto"
-  - Suoni pericolosi (scream, crying_baby)
-  - Anomalia entry/exit pattern
-- POST events a Firebase per dashboard
+### Entry Point
+- **`main.py`** — Orchestrazione principale, coordina tutti i componenti
+
+### Core Modules
+
+- **`config.py`** — Costanti e configurazioni (porte, path, credenziali)
+- **`models.py`** — `SystemState` class (thread-safe), caricamento modello
+- **`csv_handler.py`** — Lettura/scrittura log CSV
+- **`telegram.py`** — Telegram Bot API per alerts
+- **`firebase.py`** — Firebase Realtime Database sync
+- **`events.py`** — Logica event logging + handlers (keyword, sound, anomaly)
+- **`audio_bricks.py`** — Setup KeywordSpotting + AudioClassification
+- **`anomaly_detection.py`** — Isolation Forest logic + loop di controllo
+- **`api.py`** — Flask REST API endpoints (:8000)
+
+**Caratteristiche del Server**:
+- WebSocket Microphone (:8080) per audio streaming
+- REST API (:8000) con `/api/status`, `/api/events`, `/api/control`, `/api/health`
+- Integrazione bricks: KeywordSpotting ("aiuto") + AudioClassification (crying_baby, scream, etc)
+- Isolation Forest per anomaly detection su pattern entry/exit
+- CSV logging locale entrate/uscite
+- POST alerts Telegram per: keyword, suoni pericolosi, anomalie
+- POST events Firebase per dashboard real-time
 
 ### 2. `dataset_generator.py`
 - Genera dataset sintetico con abitudini regolari di una persona
@@ -66,32 +78,45 @@ Sistema integrato di monitoraggio per anziani che combina sound classification, 
 - Arduino esegue: arm/disarm, enable/disable features
 - Non necessario se usi solo alert unidirezionali
 
-## Setup
+## Setup & Avvio
 
 ### Arduino UNO Q
 
-1. Clona questo repo sull'Arduino
-2. Configura Firebase:
+1. **Clona repo e configura variabili**:
    ```bash
-   export FIREBASE_DATABASE_URL="https://your-project.firebaseio.com"
-   export FIREBASE_SERVICE_ACCOUNT_JSON="/path/to/serviceAccountKey.json"
+   cp .env.example .env
+   # Modifica .env con i tuoi valori:
+   # - TELEGRAM_BOT_TOKEN (da BotFather)
+   # - TELEGRAM_CHAT_ID (il tuo chat ID)
+   # - FIREBASE_DATABASE_URL (da Firebase Console)
    ```
-3. Configura Telegram:
-   ```bash
-   export TELEGRAM_BOT_TOKEN="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-   export TELEGRAM_CHAT_ID="9876543210"
-   ```
-4. Installa dipendenze:
+
+2. **Installa dipendenze**:
    ```bash
    pip install -r requirements.txt
    ```
-5. Genera/allena Isolation Forest model:
+
+3. **Genera/allena Isolation Forest model** (offline):
    ```bash
    python dataset_generator.py
+   # Crea: isolation_forest_model.pkl, synthetic_habits.csv
    ```
-6. Avvia server:
+
+4. **Avvia server**:
    ```bash
-   python server.py
+   python main.py
+   ```
+   
+   Output atteso:
+   ```
+   ElderSafeFinal Server - Arduino UNO Q
+   ✓ CSV initialized
+   ✓ Loaded Isolation Forest
+   Starting WebSocket Microphone on port 8080...
+   ✓ KeywordSpotting configured
+   ✓ AudioClassification configured
+   Starting REST API on port 8000...
+   🟢 All systems ready. Press Ctrl+C to stop.
    ```
 
 ### Dashboard (GitHub Pages)
@@ -153,10 +178,32 @@ service cloud.firestore {
 }
 ```
 
+## Struttura dei Moduli
+
+```
+ElderSafeFinal/
+├── main.py                    # Entry point
+├── config.py                  # Constants
+├── models.py                  # SystemState + model loading
+├── csv_handler.py             # CSV I/O
+├── telegram.py                # Telegram alerts
+├── firebase.py                # Firebase sync
+├── events.py                  # Event handlers
+├── audio_bricks.py            # Brick setup
+├── anomaly_detection.py       # Isolation Forest logic
+├── api.py                     # Flask REST API
+├── dataset_generator.py       # Training script
+├── bot.py                     # Optional Telegram bot
+├── requirements.txt           # Dependencies
+└── docs/                      # Dashboard (GitHub Pages)
+```
+
 ## TODO
 
-- [ ] Implementare server.py con bricks
-- [ ] Implementare dataset_generator.py
-- [ ] Implementare dashboard (index.html, app.js)
-- [ ] Testing su Arduino UNO Q
+- [ ] Test moduli localmente (in ordine: config → models → csv_handler → audio_bricks → main)
+- [ ] Setup Firebase e aggiorna credenziali
+- [ ] Test dashboard su localhost
+- [ ] Push a GitHub e abilita GitHub Pages
+- [ ] Deploy su Arduino UNO Q
 - [ ] Integrazione bot.py (opzionale)
+- [ ] Testing end-to-end con sensori reali
