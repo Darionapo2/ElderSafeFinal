@@ -83,11 +83,13 @@ api_thread = threading.Thread(
 )
 api_thread.start()
 
-if FIREBASE_AVAILABLE:
+if FIREBASE_AVAILABLE and firebase_admin._apps:
     log.info("Starting periodic status sync thread")
     def sync_status_loop():
         from datetime import datetime
         from csv_handler import read_csv
+        import time
+
         while True:
             try:
                 rows = read_csv()
@@ -102,10 +104,10 @@ if FIREBASE_AVAILABLE:
                     "last_update": datetime.now().isoformat()
                 }
                 db.reference("status").set(status)
+                log.debug("Status synced to Firebase")
             except Exception as e:
                 log.debug(f"Status sync error: {e}")
 
-            import time
             time.sleep(10)
 
     status_thread = threading.Thread(target=sync_status_loop, daemon=True)
@@ -117,6 +119,7 @@ if FIREBASE_AVAILABLE:
         while True:
             try:
                 cleanup_old_commands(max_age_hours=24)
+                log.debug("Old commands cleaned up")
             except Exception as e:
                 log.debug(f"Cleanup error: {e}")
 

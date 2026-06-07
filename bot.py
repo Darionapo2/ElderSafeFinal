@@ -67,7 +67,11 @@ def send_telegram_message(text: str):
 def get_firebase_status() -> dict:
     """Get system status from Firebase."""
     try:
-        status = db.reference("status").get().val()
+        snapshot = db.reference("status").get()
+        if snapshot is None:
+            log.warning("Status not yet available in Firebase")
+            return {}
+        status = snapshot.val()
         return status if status else {}
     except Exception as e:
         log.error(f"Failed to read status from Firebase: {e}")

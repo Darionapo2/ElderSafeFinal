@@ -54,3 +54,4 @@ Thumbs.db
 *.log
 logs/
 *.log.*
+safenet_service_account.json
