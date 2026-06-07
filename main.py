@@ -6,18 +6,17 @@ KeywordSpotting only version.
 
 import logging
 import threading
+from logging_setup import setup_logging
 from config import API_PORT, WS_AUDIO_PORT
 from models import SystemState, load_isolation_forest
 from csv_handler import init_csv
 from audio_bricks import setup_audio_bricks
 from anomaly_detection import anomaly_detector_loop
+from sensor_loop import sensor_monitor_loop
 from api import create_api
 from arduino.app_utils import App
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s - %(message)s"
-)
+setup_logging()
 log = logging.getLogger(__name__)
 
 
@@ -31,6 +30,14 @@ state = SystemState()
 
 log.info(f"\nStarting WebSocket Microphone on port {WS_AUDIO_PORT}")
 mic = setup_audio_bricks(state)
+
+log.info("Starting sensor monitor thread")
+sensor_thread = threading.Thread(
+    target=sensor_monitor_loop,
+    args=(state,),
+    daemon=True
+)
+sensor_thread.start()
 
 if isolation_forest is not None:
     log.info("Starting anomaly detector thread")
