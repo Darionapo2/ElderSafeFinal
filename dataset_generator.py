@@ -55,13 +55,17 @@ def generate_synthetic_events(days=DAYS_TO_GENERATE):
             patterns = WEEKEND_PATTERNS
 
         for pattern in patterns:
-            # Add small random variation (±15 minutes)
-            minute_variation = np.random.randint(-15, 16)
+            minute_base = 30
+            minute_variation = int(np.random.randint(-15, 16))
+            second_variation = int(np.random.randint(0, 60))
+
+            minute_final = max(0, min(59, minute_base + minute_variation))
 
             event_time = current_date.replace(
                 hour=pattern["time"],
-                minute=minute_variation,
-                second=np.random.randint(0, 60)
+                minute=minute_final,
+                second=second_variation,
+                microsecond=0
             )
 
             # Calculate delta from last event

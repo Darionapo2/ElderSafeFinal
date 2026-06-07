@@ -31,7 +31,6 @@ def create_api(state: SystemState):
         rows = read_csv()
         status_data = {
             "armed": state.armed,
-            "sound_classification": state.sound_classification_enabled,
             "keyword_spotting": state.keyword_spotting_enabled,
             "anomaly_detection": state.anomaly_detection_enabled,
             "total_events": len(rows),
@@ -50,7 +49,7 @@ def create_api(state: SystemState):
         event_type = request.args.get("type", None)
 
         rows = read_csv()
-        rows = list(reversed(rows))  # Most recent first
+        rows = list(reversed(rows))
 
         if event_type:
             rows = [r for r in rows if r.get("direction") in event_type.split(",")]
@@ -65,10 +64,6 @@ def create_api(state: SystemState):
         if "armed" in data:
             state.set_armed(bool(data["armed"]))
             log.info(f"System {'ARMED' if state.armed else 'DISARMED'}")
-
-        if "sound_classification" in data:
-            state.set_sound_classification(bool(data["sound_classification"]))
-            log.info(f"Sound classification: {state.sound_classification_enabled}")
 
         if "keyword_spotting" in data:
             state.set_keyword_spotting(bool(data["keyword_spotting"]))

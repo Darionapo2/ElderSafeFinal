@@ -1,9 +1,6 @@
 # Arduino Server Dependencies
 # Installare con: pip install -r requirements.txt
 
-# Arduino App Bricks (audio, bricks, web_ui)
-arduino_app_bricks[microphone,stream,web_ui] @ git+https://github.com/arduino/app-bricks-py.git
-
 # Core audio processing
 numpy>=1.26
 websockets>=14.0

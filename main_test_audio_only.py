@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-main_test1.py - Test KeywordSpotting + AudioClassification together
+main_test_audio_only.py - Test ONLY AudioClassification
 Minimal linear code without function wrappers.
 """
 
 import logging
-from arduino.app_bricks.keyword_spotting import KeywordSpotting
 from arduino.app_bricks.audio_classification import AudioClassification
 from arduino.app_peripherals.microphone import Microphone
 from arduino.app_utils import App
@@ -20,7 +19,6 @@ log = logging.getLogger(__name__)
 WS_PORT = 8080
 SAMPLE_RATE = 16000
 CONFIDENCE = 0.80
-DEBOUNCE_SEC = 1.0
 
 # Create microphone with WebSocket
 log.info(f"\nStarting WebSocket Microphone on ws://0.0.0.0:{WS_PORT}")
@@ -29,26 +27,16 @@ mic = Microphone(
     sample_rate=SAMPLE_RATE
 )
 
-# Setup KeywordSpotting for "aiuto"
-log.info("\n▶ Setting up KeywordSpotting (keyword: 'aiuto')...")
-
-def on_aiuto():
-    log.warning("🔴 KEYWORD 'aiuto' DETECTED!")
-
-spotter = KeywordSpotting(mic=mic, confidence=CONFIDENCE, debounce_sec=DEBOUNCE_SEC)
-spotter.on_detect("aiuto", on_aiuto)
-log.info("✓ KeywordSpotting configured")
-
 # Setup AudioClassification
 log.info("\n▶ Setting up AudioClassification...")
+classifier = AudioClassification(mic=mic, confidence=CONFIDENCE)
 
 def make_sound_handler(label: str):
     def handler():
         log.warning(f"🔴 SOUND DETECTED: '{label}'")
     return handler
 
-classifier = AudioClassification(mic=mic, confidence=CONFIDENCE)
-labels = ["crying_baby", "scream"]
+labels = ["crying_baby", "fall", "glass_breaking", "scream"]
 for label in labels:
     classifier.on_detect(label, make_sound_handler(label))
 

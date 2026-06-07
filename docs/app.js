@@ -1,13 +1,14 @@
 // ── Firebase Configuration ──────────────────────────────────────────────────
 // TODO: Replace with your Firebase config from Firebase Console
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "your-project.firebaseapp.com",
-    databaseURL: "https://your-project.firebaseio.com",
-    projectId: "your-project-id",
-    storageBucket: "your-project.appspot.com",
-    messagingSenderId: "your-messaging-sender-id",
-    appId: "your-app-id"
+    apiKey: "AIzaSyCTxVnPDZOdw50hxynaBPgTJi3Uxnh_nS4",
+    authDomain: "safenet-e969a.firebaseapp.com",
+    databaseURL: "https://safenet-e969a-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "safenet-e969a",
+    storageBucket: "safenet-e969a.firebasestorage.app",
+    messagingSenderId: "67444032834",
+    appId: "1:67444032834:web:7c817e8db571551a6eb4db",
+    measurementId: "G-VS8F0627M5"
 };
 
 firebase.initializeApp(firebaseConfig);

@@ -2,7 +2,76 @@
 
 ## Test Files
 
-### main_test1.py - Audio Bricks Only
+### main_test_keyword_only.py - KeywordSpotting Only
+Testa **solo KeywordSpotting** ("aiuto" detection) senza AudioClassification.
+
+**Cosa fa:**
+- Avvia WebSocket Microphone su porta 8080
+- Configura KeywordSpotting ("aiuto")
+- Aspetta audio in streaming
+- Logga quando sentirai la parola "aiuto"
+
+**Come usare:**
+```bash
+# Terminal 1: avvia server test
+python main_test_keyword_only.py
+
+# Terminal 2: invia audio via WebSocket (RAW mode - consigliato!)
+python ../client_mic.py --ip localhost --port 8080 --raw
+
+# Oppure con BPP mode (default)
+python ../client_mic.py --ip localhost --port 8080
+```
+
+**Output atteso:**
+```
+ElderSafeFinal - Keyword Spotting Test
+✓ KeywordSpotting configured
+🟢 Ready to receive audio via WebSocket
+```
+
+Quando sentirai "aiuto" nel microfono:
+```
+🔴 KEYWORD 'aiuto' DETECTED!
+```
+
+---
+
+### main_test_audio_only.py - AudioClassification Only
+Testa **solo AudioClassification** (crying_baby, fall, glass_breaking, scream) senza KeywordSpotting.
+
+**Cosa fa:**
+- Avvia WebSocket Microphone su porta 8080
+- Configura AudioClassification
+- Aspetta audio in streaming
+- Logga quando rileva suoni pericolosi
+
+**Come usare:**
+```bash
+# Terminal 1: avvia server test
+python main_test_audio_only.py
+
+# Terminal 2: invia audio via WebSocket (RAW mode - consigliato!)
+python ../client_mic.py --ip localhost --port 8080 --raw
+```
+
+**Output atteso:**
+```
+ElderSafeFinal - Audio Classification Test
+✓ AudioClassification configured
+  Labels: crying_baby, fall, glass_breaking, scream
+🟢 Ready to receive audio via WebSocket
+```
+
+Quando sentirai suoni nel microfono:
+```
+🔴 SOUND DETECTED: 'scream'
+🔴 SOUND DETECTED: 'crying_baby'
+```
+
+---
+
+### main_test1.py - Audio Bricks Only (Both Together)
 Testa **KeywordSpotting + AudioClassification** senza API.
 
 **Cosa fa:**
@@ -111,6 +180,43 @@ class MockBrick:
 
 # Usa MockBrick al posto di KeywordSpotting/AudioClassification
 ```
+
+---
+
+## BPP vs RAW Mode
+
+### Quale modalità usare?
+
+**RAW mode (consigliato)** ✅
+```bash
+python ../client_mic.py --ip localhost --port 8080 --raw
+```
+- Audio PCM grezzo senza header
+- Zero overhead di encoding
+- Più stabile e veloce
+- Usa questo per il testing!
+
+**BPP mode (default)** ⚠️
+```bash
+python ../client_mic.py --ip localhost --port 8080
+```
+- BPP = Binary Packet Protocol (14 byte header)
+- Più robusto ma con overhead
+- Può avere problemi di handshake se server/client non allineati
+- Errori come:
+  ```
+  EOFError: stream ends after 0 bytes, before end of line
+  InvalidMessage: did not receive a valid HTTP request
+  ```
+
+### Se vedi errori WebSocket durante BPP mode:
+
+Usa semplicemente `--raw`:
+```bash
+python ../client_mic.py --ip localhost --port 8080 --raw
+```
+
+Questo bypassa completamente il protocollo BPP e invia audio grezzo.
 
 ---
 

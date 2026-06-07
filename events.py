@@ -17,7 +17,6 @@ def save_entry_exit_event(state: SystemState, direction: str, sensor: str = "REE
     now = datetime.now()
     event_id = state.increment_event()
 
-    # Calculate delta from last event
     rows = read_csv()
     delta_ms = 0
     if rows:
@@ -39,9 +38,8 @@ def save_entry_exit_event(state: SystemState, direction: str, sensor: str = "REE
     ]
 
     append_csv(row)
-    log.info(f"#{event_id} {direction.upper()} @ {now.strftime('%H:%M:%S')} (Δ {delta_ms} ms, anomaly={anomaly_score:.3f})")
+    log.info(f"#{event_id} {direction.upper()} @ {now.strftime('%H:%M:%S')} (delta {delta_ms} ms)")
 
-    # Post to Firebase
     post_event({
         "id": event_id,
         "datetime": row[1],
@@ -70,7 +68,6 @@ def save_alarm_event(state: SystemState, alarm_type: str):
     append_csv(row)
     log.warning(f"#{event_id} ALARM ({alarm_type}) @ {now.strftime('%H:%M:%S')}")
 
-    # Post to Firebase
     post_event({
         "id": event_id,
         "datetime": row[1],
@@ -82,28 +79,14 @@ def save_alarm_event(state: SystemState, alarm_type: str):
 
 def on_keyword_detected(state: SystemState):
     """Handler for keyword detection."""
-    log.warning("🔴 KEYWORD 'aiuto' DETECTED!")
+    log.warning("KEYWORD 'aiuto' DETECTED!")
     save_alarm_event(state, "VOICE_AIUTO")
     send_alert("RICHIESTA DI AIUTO", "Parola 'aiuto' rilevata")
 
 
-def on_sound_detected(state: SystemState, label: str):
-    """Handler for dangerous sound detection."""
-    if state.sound_classification_enabled:
-        log.warning(f"🔴 SOUND DETECTED: '{label}'")
-        save_alarm_event(state, f"SOUND_{label.upper()}")
-
-        if label in ["scream", "crying_baby"]:
-            send_alert(
-                "SUONO PERICOLOSO",
-                f"Rilevato: {label}",
-                f"Orario: {datetime.now().strftime('%H:%M:%S')}"
-            )
-
-
 def on_anomaly_detected(state: SystemState, event: dict, anomaly_score: float):
     """Handler for anomaly detection."""
-    log.warning(f"⚠️ ANOMALY DETECTED: {event['direction']} @ {event['time']} (score={anomaly_score:.3f})")
+    log.warning(f"ANOMALY DETECTED: {event['direction']} @ {event['time']} (score={anomaly_score:.3f})")
     send_alert(
         "ANOMALIA RILEVATA",
         f"{event['direction'].upper()} inusuale",
