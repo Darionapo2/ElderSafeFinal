@@ -209,29 +209,10 @@
         </main>
     </div>
 
-    <!-- Firebase SDK v9 -->
-    <script src="https://www.gstatic.com/firebaseapp/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebaseapp/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebaseapp/10.8.0/firebase-database-compat.js"></script>
-
-    <!-- App Script -->
-    <script>
-        // Wait for Firebase to load
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof firebase === 'undefined') {
-                console.error('Firebase SDK failed to load. Check CDN connection.');
-                document.getElementById('auth-container').innerHTML =
-                    '<div style="padding: 20px; color: red; text-align: center; font-family: Arial;">' +
-                    '<h2>Error Loading Firebase</h2>' +
-                    '<p>Could not load Firebase SDK. Please check your internet connection and refresh.</p>' +
-                    '</div>';
-            } else {
-                // Firebase loaded successfully
-                const script = document.createElement('script');
-                script.src = 'app.js';
-                document.body.appendChild(script);
-            }
-        });
-    </script>
+    <!-- Firebase Script (Original Working Version) -->
+    <script src="https://www.gstatic.com/firebaseapp/9.22.2/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebaseapp/9.22.2/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebaseapp/9.22.2/firebase-database.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
