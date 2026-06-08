@@ -20,7 +20,6 @@ int get_pir_state()   { return digitalRead(pirPin);  }
 int get_system_armed(){ return systemArmed ? 1 : 0;  }
 int get_nfc_armed()   { return systemArmed ? 1 : 0;  }  // Same as armed for now
 
-// Control system armed state from Firebase (updates LEDs)
 void set_system_armed(int armed) {
   systemArmed = armed ? true : false;
   updateLeds();
@@ -28,7 +27,6 @@ void set_system_armed(int armed) {
   else             beep_disarm();
 }
 
-// Direct LED control (for visual feedback)
 void set_led_green(int state) {
   digitalWrite(ledGreen, state ? HIGH : LOW);
 }
@@ -104,7 +102,7 @@ void setup() {
   Bridge.provide("beep_exit",          beep_exit);
   Bridge.provide("beep_alarm",         beep_alarm);
 
-  updateLeds();  // system off at startup → red LED
+  updateLeds();
 }
 
 void loop() {

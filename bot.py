@@ -47,8 +47,8 @@ if not firebase_admin._apps:
     cred = credentials.Certificate(FIREBASE_CREDS)
     firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_DB_URL})
 
-log.info(f"✓ Firebase initialized")
-log.info(f"✓ Telegram bot token loaded")
+log.info("Firebase initialized")
+log.info("Telegram bot token loaded")
 
 
 def send_telegram_message(text: str):
@@ -61,7 +61,7 @@ def send_telegram_message(text: str):
         )
         log.debug(f"Message sent to Telegram")
     except Exception as e:
-        log.error(f"Failed to send Telegram message: {e}")
+        log.error(f"Telegram message send failed: {e}")
 
 
 def get_firebase_status() -> dict:
@@ -74,44 +74,39 @@ def get_firebase_status() -> dict:
         status = snapshot.val()
         return status if status else {}
     except Exception as e:
-        log.error(f"Failed to read status from Firebase: {e}")
+        log.error(f"Firebase status read failed: {e}")
         return {}
 
 
 def format_status_message(status: dict) -> str:
     """Format status as readable message."""
     if not status:
-        return "❌ Sistema non disponibile"
+        return "System unavailable"
 
-    armed_status = "🟢 ATTIVO" if status.get("armed") else "🔴 DISATTIVATO"
-    keyword_status = "✓" if status.get("keyword_spotting") else "✗"
-    anomaly_status = "✓" if status.get("anomaly_detection") else "✗"
+    armed_status = "armed" if status.get("armed") else "disarmed"
+    keyword_status = "on" if status.get("keyword_spotting") else "off"
+    anomaly_status = "on" if status.get("anomaly_detection") else "off"
 
     return f"""
-📊 Status Sistema:
+System Status:
 
-{armed_status}
+Armed: {armed_status}
 
 Keyword Spotting: {keyword_status}
 Anomaly Detection: {anomaly_status}
 
-Ultimi Eventi:
-• Totali: {status.get('total_events', 0)}
-• Entrate: {status.get('entries', 0)}
-• Uscite: {status.get('exits', 0)}
-• Allarmi: {status.get('alarms', 0)}
+Recent Events:
+Total: {status.get('total_events', 0)}
+Entries: {status.get('entries', 0)}
+Exits: {status.get('exits', 0)}
+Alarms: {status.get('alarms', 0)}
 
-⏱️ Ultimo aggiornamento: {status.get('last_update', 'N/A')}
+Last update: {status.get('last_update', 'N/A')}
 """
 
 
 def send_firebase_command(cmd_type: str, value: bool, timeout: int = 15) -> str:
-    """
-    Send command via Firebase and wait for response.
-    Arduino polls for commands every 2 seconds, so allow more time.
-
-    Returns response from Arduino or timeout message.
-    """
+    """Send command via Firebase and wait for Arduino response."""
     try:
         cmd_id = str(int(time.time() * 1000))
 
@@ -126,7 +121,6 @@ def send_firebase_command(cmd_type: str, value: bool, timeout: int = 15) -> str:
 
         log.info(f"Command {cmd_id} sent: {cmd_type} = {value}")
 
-        # Wait for response (Arduino polls every 2 sec, so allow 15 sec total)
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
@@ -136,21 +130,21 @@ def send_firebase_command(cmd_type: str, value: bool, timeout: int = 15) -> str:
                 if cmd:
                     status = cmd.get("status")
                     if status == "completed":
-                        response = cmd.get("response", "Comando eseguito")
-                        return f"✓ {response}"
+                        response = cmd.get("response", "Command executed")
+                        return f"OK: {response}"
                     elif status == "failed":
-                        error = cmd.get("response", "Errore sconosciuto")
-                        return f"✗ Errore: {error}"
+                        error = cmd.get("response", "Unknown error")
+                        return f"Error: {error}"
             except Exception as e:
-                log.debug(f"Error reading command response: {e}")
+                log.debug(f"Command response read failed: {e}")
 
-            time.sleep(0.5)  # Poll every 500ms (faster than Arduino's 2 sec)
+            time.sleep(0.5)
 
-        return "⏱️ Timeout: Arduino non ha risposto entro 15 secondi (check connessione Firebase)"
+        return "Timeout: Arduino did not respond within 15 seconds"
 
     except Exception as e:
-        log.error(f"Failed to send Firebase command: {e}")
-        return f"✗ Errore: {str(e)}"
+        log.error(f"Firebase command send failed: {e}")
+        return f"Error: {str(e)}"
 
 
 def process_command(message: str) -> str:
@@ -159,16 +153,16 @@ def process_command(message: str) -> str:
 
     if command in ["/start", "/help"]:
         return """
-🏡 ElderSafeFinal Bot
+ElderSafeFinal Bot
 
-Comandi disponibili:
-/status - Mostra status sistema
-/arm - Attiva sistema
-/disarm - Disattiva sistema
-/enable_keyword - Abilita keyword spotting
-/disable_keyword - Disabilita keyword spotting
-/enable_anomaly - Abilita anomaly detection
-/disable_anomaly - Disabilita anomaly detection
+Available commands:
+/status - Show system status
+/arm - Arm system
+/disarm - Disarm system
+/enable_keyword - Enable keyword spotting
+/disable_keyword - Disable keyword spotting
+/enable_anomaly - Enable anomaly detection
+/disable_anomaly - Disable anomaly detection
 """
 
     elif command == "/status":
@@ -200,7 +194,7 @@ Comandi disponibili:
         return response
 
     else:
-        return "❓ Comando non riconosciuto. Usa /help per la lista di comandi."
+        return "Unknown command. Use /help for available commands."
 
 
 def poll_telegram():
@@ -233,7 +227,7 @@ def poll_telegram():
                         )
 
         except Exception as e:
-            log.error(f"Polling error: {e}")
+            log.error(f"Telegram polling failed: {e}")
 
         time.sleep(1)
 
@@ -249,4 +243,4 @@ if __name__ == "__main__":
     try:
         poll_telegram()
     except KeyboardInterrupt:
-        log.info("\n✓ Bot stopped")
+        log.info("Bot stopped")

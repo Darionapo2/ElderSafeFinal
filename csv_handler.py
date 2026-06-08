@@ -16,9 +16,9 @@ def init_csv():
         if not Path(CSV_PATH).exists() or Path(CSV_PATH).stat().st_size == 0:
             with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow(CSV_HEADER)
-            log.info(f"✓ CSV initialized: {CSV_PATH}")
+            log.info(f"CSV initialized: {CSV_PATH}")
     except Exception as e:
-        log.error(f"Error initializing CSV: {e}")
+        log.error(f"CSV initialization failed: {e}")
 
 
 def read_csv():
@@ -29,7 +29,7 @@ def read_csv():
         with open(CSV_PATH, "r", encoding="utf-8") as f:
             return list(csv.DictReader(f))
     except Exception as e:
-        log.error(f"Error reading CSV: {e}")
+        log.error(f"CSV read failed: {e}")
         return []
 
 
@@ -39,7 +39,7 @@ def append_csv(row):
         with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow(row)
     except Exception as e:
-        log.error(f"Error writing CSV: {e}")
+        log.error(f"CSV write failed: {e}")
 
 
 def get_last_entry_exit():

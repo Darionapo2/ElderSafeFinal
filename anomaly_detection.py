@@ -47,7 +47,7 @@ def extract_features(event):
 
 
 def check_anomaly(isolation_forest, state: SystemState):
-    """Check for anomalies in recent events."""
+    """Check for anomalies in recent entry/exit events."""
     if isolation_forest is None:
         return
 
@@ -55,7 +55,6 @@ def check_anomaly(isolation_forest, state: SystemState):
     if len(rows) < 2:
         return
 
-    # Get last entry/exit (skip alarms)
     recent_events = [r for r in rows[-10:] if r.get("direction") in ["entry", "exit"]]
     if not recent_events:
         return
@@ -63,24 +62,21 @@ def check_anomaly(isolation_forest, state: SystemState):
     event = recent_events[-1]
 
     try:
-        # Build feature vector
         feature = extract_features(event)
-
-        # Predict anomaly
         prediction = isolation_forest.predict(feature)
-        anomaly_score = -isolation_forest.score_samples(feature)[0]  # Convert to 0-1 score
+        anomaly_score = -isolation_forest.score_samples(feature)[0]
 
         if prediction[0] == -1 and anomaly_score > ANOMALY_THRESHOLD:
             on_anomaly_detected(state, event, anomaly_score)
 
     except Exception as e:
-        log.error(f"Anomaly detection error: {e}")
+        log.error(f"Anomaly detection failed: {e}")
 
 
 def anomaly_detector_loop(isolation_forest, state: SystemState):
-    """Background thread: periodically check for anomalies."""
+    """Periodically check for anomalies in entry/exit patterns."""
     if isolation_forest is None:
-        log.warning("No Isolation Forest model loaded, skipping anomaly detection")
+        log.warning("Isolation Forest model not loaded - anomaly detection disabled")
         return
 
     log.info("Anomaly detector started")
@@ -88,9 +84,7 @@ def anomaly_detector_loop(isolation_forest, state: SystemState):
     while True:
         try:
             time.sleep(ANOMALY_CHECK_INTERVAL)
-
             if state.anomaly_detection_enabled:
                 check_anomaly(isolation_forest, state)
-
         except Exception as e:
-            log.error(f"Anomaly detector loop error: {e}")
+            log.error(f"Anomaly detector failed: {e}")

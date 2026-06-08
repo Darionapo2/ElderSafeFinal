@@ -13,8 +13,8 @@ log = logging.getLogger(__name__)
 
 
 def setup_audio_bricks(state: SystemState):
-    """Setup KeywordSpotting brick."""
-    log.info("Initializing audio bricks...")
+    """Initialize audio processing bricks."""
+    log.info("Initializing audio bricks")
 
     mic = Microphone(
         device=f"ws://0.0.0.0:{WS_AUDIO_PORT}",
@@ -25,17 +25,15 @@ def setup_audio_bricks(state: SystemState):
     try:
         spotter = KeywordSpotting(mic=mic, confidence=CONFIDENCE, debounce_sec=DEBOUNCE_SEC)
 
-        # Callback checks state BEFORE processing
-        # This allows enabling/disabling via command
         def on_aiuto():
             if state.keyword_spotting_enabled:
                 on_keyword_detected(state)
             else:
-                log.debug("Keyword 'aiuto' detected but keyword_spotting disabled - ignoring")
+                log.debug("Keyword 'aiuto' detected but keyword spotting disabled")
 
         spotter.on_detect("aiuto", on_aiuto)
-        log.info("KeywordSpotting configured (can be toggled via command)")
+        log.info("KeywordSpotting brick configured")
     except Exception as e:
-        log.error(f"KeywordSpotting setup failed: {e}")
+        log.error(f"KeywordSpotting initialization failed: {e}")
 
     return mic

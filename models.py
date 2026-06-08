@@ -61,13 +61,13 @@ class SystemState:
 
 
 def load_isolation_forest():
-    """Load trained Isolation Forest model."""
+    """Load trained Isolation Forest model from disk."""
     try:
         if Path(MODEL_PATH).exists():
             with open(MODEL_PATH, "rb") as f:
                 model = pickle.load(f)
-            log.info(f"✓ Loaded Isolation Forest from {MODEL_PATH}")
+            log.info(f"Isolation Forest loaded: {MODEL_PATH}")
             return model
     except Exception as e:
-        log.error(f"Error loading model: {e}")
+        log.error(f"Model load failed: {e}")
     return None

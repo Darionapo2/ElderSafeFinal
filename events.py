@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 
 def save_entry_exit_event(state: SystemState, direction: str, sensor: str = "REED", anomaly_score: float = 0.0):
-    """Log entry/exit event."""
+    """Log entry/exit event to CSV and Firebase."""
     now = datetime.now()
     event_id = state.increment_event()
 
@@ -24,7 +24,7 @@ def save_entry_exit_event(state: SystemState, direction: str, sensor: str = "REE
             last_time = datetime.strptime(rows[-1]["datetime"], "%Y-%m-%d %H:%M:%S.%f")
             delta_ms = int((now - last_time).total_seconds() * 1000)
         except Exception as e:
-            log.error(f"Error calculating delta: {e}")
+            log.error(f"Delta calculation failed: {e}")
 
     row = [
         event_id,
@@ -38,7 +38,7 @@ def save_entry_exit_event(state: SystemState, direction: str, sensor: str = "REE
     ]
 
     append_csv(row)
-    log.info(f"#{event_id} {direction.upper()} @ {now.strftime('%H:%M:%S')} (delta {delta_ms} ms)")
+    log.info(f"Event #{event_id}: {direction} at {now.strftime('%H:%M:%S')}")
 
     post_event({
         "id": event_id,
@@ -50,7 +50,7 @@ def save_entry_exit_event(state: SystemState, direction: str, sensor: str = "REE
 
 
 def save_alarm_event(state: SystemState, alarm_type: str):
-    """Log alarm event."""
+    """Log alarm event to CSV and Firebase."""
     now = datetime.now()
     event_id = state.increment_event()
 
@@ -66,7 +66,7 @@ def save_alarm_event(state: SystemState, alarm_type: str):
     ]
 
     append_csv(row)
-    log.warning(f"#{event_id} ALARM ({alarm_type}) @ {now.strftime('%H:%M:%S')}")
+    log.warning(f"Alarm event #{event_id}: {alarm_type} at {now.strftime('%H:%M:%S')}")
 
     post_event({
         "id": event_id,
@@ -78,22 +78,20 @@ def save_alarm_event(state: SystemState, alarm_type: str):
 
 
 def on_keyword_detected(state: SystemState):
-    """Handler for keyword detection."""
-    # Only process if system is armed
+    """Handler for 'aiuto' keyword detection."""
     if not state.armed:
-        log.debug("Keyword 'aiuto' detected but system is DISARMED - ignoring")
+        log.debug("Keyword 'aiuto' detected but system is disarmed - ignoring")
         return
 
-    log.warning("KEYWORD 'aiuto' DETECTED!")
+    log.warning("Keyword 'aiuto' detected")
     save_alarm_event(state, "VOICE_AIUTO")
-    send_alert("RICHIESTA DI AIUTO", "Parola 'aiuto' rilevata")
+    send_alert("Help Request", "Keyword 'aiuto' detected")
 
 
 def on_anomaly_detected(state: SystemState, event: dict, anomaly_score: float):
-    """Handler for anomaly detection."""
-    log.warning(f"ANOMALY DETECTED: {event['direction']} @ {event['time']} (score={anomaly_score:.3f})")
+    """Handler for anomaly detection in entry/exit patterns."""
+    log.warning(f"Anomaly detected: {event['direction']} at {event['time']} (score={anomaly_score:.3f})")
     send_alert(
-        "ANOMALIA RILEVATA",
-        f"{event['direction'].upper()} inusuale",
-        f"Orario: {event['time']}\nPunteggio: {anomaly_score:.3f}"
+        "Anomaly Detected",
+        f"Unusual {event['direction']} pattern detected"
     )

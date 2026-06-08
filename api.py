@@ -61,7 +61,7 @@ def create_api(state: SystemState):
 
         if "armed" in data:
             state.set_armed(bool(data["armed"]))
-            log.info(f"System {'ARMED' if state.armed else 'DISARMED'}")
+            log.info(f"System {'armed' if state.armed else 'disarmed'}")
 
         if "keyword_spotting" in data:
             state.set_keyword_spotting(bool(data["keyword_spotting"]))

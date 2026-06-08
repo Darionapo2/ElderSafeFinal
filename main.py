@@ -28,8 +28,7 @@ except ImportError:
 setup_logging()
 log = logging.getLogger(__name__)
 
-
-log.info("ElderSafeFinal - KeywordSpotting Mode")
+log.info("ElderSafeFinal system starting")
 
 init_csv()
 
@@ -37,16 +36,15 @@ isolation_forest = load_isolation_forest()
 
 state = SystemState()
 
-# ── Sync system state with MCU on startup ──────────────────────────────────────
 try:
     from sensors import SensorMonitor
     monitor = SensorMonitor()
     nfc_state = monitor.get_nfc_armed()
     state.set_armed(bool(nfc_state))
     monitor.set_led_armed(bool(nfc_state))
-    log.info(f"✓ System state synced from MCU: armed={bool(nfc_state)}")
+    log.info(f"MCU state synchronized: armed={bool(nfc_state)}")
 except Exception as e:
-    log.warning(f"Could not sync with MCU on startup: {e}")
+    log.warning(f"MCU synchronization failed: {e}")
 
 if FIREBASE_AVAILABLE:
     try:
@@ -71,13 +69,13 @@ if FIREBASE_AVAILABLE:
                 cred = credentials.Certificate(cred_dict)
                 firebase_admin.initialize_app(cred, {"databaseURL": db_url})
                 setup_firebase_command_listener(state)
-                log.info("✓ Firebase initialized")
+                log.info("Firebase initialized")
             else:
                 log.info("Firebase credentials not configured - NFC sync will be skipped")
     except Exception as e:
         log.warning(f"Firebase init failed: {e} - continuing without Cloud features")
 
-log.info(f"\nStarting WebSocket Microphone on port {WS_AUDIO_PORT}")
+log.info(f"Starting WebSocket microphone on port {WS_AUDIO_PORT}")
 mic = setup_audio_bricks(state)
 
 log.info("Starting sensor monitor thread")
@@ -99,7 +97,7 @@ if isolation_forest is not None:
 else:
     log.info("Isolation Forest not loaded - anomaly detection disabled")
 
-log.info(f"\nStarting REST API on port {API_PORT}")
+log.info(f"Starting REST API on port {API_PORT}")
 api_app = create_api(state)
 api_thread = threading.Thread(
     target=lambda: api_app.run(host="0.0.0.0", port=API_PORT, debug=False),
@@ -128,7 +126,7 @@ if FIREBASE_AVAILABLE and firebase_admin._apps:
                     "last_update": datetime.now().isoformat()
                 }
                 db.reference("status").set(status)
-                log.debug("Status synced to Firebase")
+                log.debug("Status synced")
             except Exception as e:
                 log.debug(f"Status sync error: {e}")
 
@@ -143,7 +141,7 @@ if FIREBASE_AVAILABLE and firebase_admin._apps:
         while True:
             try:
                 cleanup_old_commands(max_age_hours=24)
-                log.debug("Old commands cleaned up")
+                log.debug("Old commands cleaned")
             except Exception as e:
                 log.debug(f"Cleanup error: {e}")
 
@@ -152,7 +150,7 @@ if FIREBASE_AVAILABLE and firebase_admin._apps:
     cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
     cleanup_thread.start()
 
-log.info("All systems ready. Press Ctrl+C to stop.\n")
+log.info("System ready. Press Ctrl+C to stop.")
 
 
 App.run()

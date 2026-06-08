@@ -17,7 +17,7 @@ def setup_logging():
     try:
         Path(LOG_DIR).mkdir(exist_ok=True)
     except Exception as e:
-        print(f"Error creating log directory: {e}")
+        print(f"Log directory creation failed: {e}")
         return
 
     root_logger = logging.getLogger()
@@ -37,7 +37,7 @@ def setup_logging():
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
     except Exception as e:
-        print(f"Error setting up file handler: {e}")
+        print(f"File handler setup failed: {e}")
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)

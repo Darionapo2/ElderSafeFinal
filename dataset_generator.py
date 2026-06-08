@@ -100,7 +100,7 @@ def save_csv(events, filepath=OUTPUT_CSV):
         writer.writeheader()
         writer.writerows(events)
 
-    log.info(f"✓ Generated {len(events)} events → {filepath}")
+    log.info(f"Generated {len(events)} events: {filepath}")
 
 
 def extract_features(events):
@@ -160,12 +160,11 @@ def train_isolation_forest(features, contamination=0.05):
     )
 
     model.fit(features)
-    log.info("✓ Model trained")
+    log.info("Model trained")
 
-    # Evaluate on training set
     predictions = model.predict(features)
     anomalies = np.sum(predictions == -1)
-    log.info(f"  Anomalies detected in training set: {anomalies}/{len(features)}")
+    log.info(f"Anomalies in training set: {anomalies}/{len(features)}")
 
     return model
 
@@ -174,7 +173,7 @@ def save_model(model, filepath=MODEL_OUTPUT):
     """Save trained model to pickle."""
     with open(filepath, "wb") as f:
         pickle.dump(model, f)
-    log.info(f"✓ Model saved → {filepath}")
+    log.info(f"Model saved: {filepath}")
 
 
 def main():
@@ -182,27 +181,22 @@ def main():
     log.info("Synthetic Dataset Generator for Anomaly Detection")
     log.info("=" * 60)
 
-    # Generate synthetic events
-    log.info(f"\n1. Generating {DAYS_TO_GENERATE} days of synthetic events...")
+    log.info(f"Generating {DAYS_TO_GENERATE} days of synthetic events...")
     events = generate_synthetic_events(DAYS_TO_GENERATE)
     save_csv(events)
 
-    # Extract features
-    log.info(f"\n2. Extracting features...")
+    log.info("Extracting features...")
     features = extract_features(events)
-    log.info(f"   Shape: {features.shape}")
-    log.info(f"   Features: [hour, day_of_week, time_since_last, event_type, time_bucket, is_weekend]")
+    log.info(f"Shape: {features.shape}")
 
-    # Train model
-    log.info(f"\n3. Training Isolation Forest model...")
+    log.info("Training Isolation Forest model...")
     model = train_isolation_forest(features)
 
-    # Save model
-    log.info(f"\n4. Saving model...")
+    log.info("Saving model...")
     save_model(model)
 
-    log.info("\n" + "=" * 60)
-    log.info("✓ Done! Ready to use with server.py")
+    log.info("=" * 60)
+    log.info("Done")
     log.info("=" * 60)
 
 

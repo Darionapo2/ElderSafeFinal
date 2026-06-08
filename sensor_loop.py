@@ -15,20 +15,12 @@ log = logging.getLogger(__name__)
 
 
 def post_nfc_command_to_firebase(armed: bool):
-    """
-    Post NFC state change to Firebase as a command.
-    Uses safe pattern: check init first, import inside function.
-
-    Args:
-        armed: System armed state
-    """
-    # Check if Firebase is initialized (safe pattern from firebase.py)
+    """Post NFC state change to Firebase as a command."""
     if not is_firebase_initialized():
         log.debug("Firebase not initialized - NFC sync skipped")
         return
 
     try:
-        # Import db inside function (safe for multithreading)
         from firebase_admin import db
 
         cmd_id = str(int(time.time() * 1000))
@@ -38,21 +30,16 @@ def post_nfc_command_to_firebase(armed: bool):
             "source": "nfc",
             "timestamp": datetime.now().isoformat(),
             "status": "completed",
-            "response": f"Sistema {'ATTIVATO' if armed else 'DISATTIVATO'} via NFC"
+            "response": f"System {'armed' if armed else 'disarmed'} via NFC"
         })
-        log.info(f"✓ NFC state synced to Firebase (armed={armed})")
+        log.info(f"NFC state synced to Firebase (armed={armed})")
 
     except Exception as e:
         log.error(f"Firebase sync error: {e}")
 
 
 def sensor_monitor_loop(state: SystemState):
-    """
-    Background thread: monitor sensors for entry/exit detection and NFC tags.
-
-    Args:
-        state: System state object
-    """
+    """Monitor sensors for entry/exit detection and NFC tags."""
     monitor = SensorMonitor()
     log.info("Sensor monitor started")
 
@@ -65,19 +52,11 @@ def sensor_monitor_loop(state: SystemState):
             save_entry_exit_event(state, "exit")
 
     def on_nfc_change(armed: bool):
-        """
-        Called when NFC tag is read.
-        Syncs NFC state to Python system state, LED, and Firebase.
-        """
-        log.warning(f"🏷️  NFC TAG: System {'ARMING' if armed else 'DISARMING'}")
+        """Handle NFC tag detection and system state sync."""
+        log.warning(f"NFC tag detected: system {'arming' if armed else 'disarming'}")
 
-        # Update Python system state
         state.set_armed(armed)
-
-        # Update LED via Bridge immediately
         monitor.set_led_armed(armed)
-
-        # Sync to Firebase (safe multithreading pattern)
         post_nfc_command_to_firebase(armed)
 
     while True:

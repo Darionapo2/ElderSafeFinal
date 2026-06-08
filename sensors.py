@@ -9,8 +9,8 @@ from arduino.app_utils import Bridge
 
 log = logging.getLogger(__name__)
 
-DEBOUNCE_MS = 500
-PIR_DEBOUNCE_MS = 2000
+DEBOUNCE_MS = 3000
+PIR_DEBOUNCE_MS = 5000
 
 
 class SensorMonitor:
@@ -21,6 +21,11 @@ class SensorMonitor:
         self.last_pir_ms = None
         self.start_time = time.time()
 
+        # Event sequencing (reed/pir timing)
+        self.reed_triggered_ms = None  # Timestamp when reed was triggered
+        self.pir_triggered_ms = None   # Timestamp when pir was triggered
+        self.event_timeout_ms = 3000   # Max 3 seconds between reed and pir
+
     def now_ms(self):
         return int((time.time() - self.start_time) * 1000)
 
@@ -29,7 +34,7 @@ class SensorMonitor:
             state = Bridge.call("get_reed_state")
             return int(state) if state is not None else None
         except Exception as e:
-            log.error(f"Error reading reed state: {e}")
+            log.error(f"Reed state read failed: {e}")
             return None
 
     def get_pir_state(self):
@@ -37,7 +42,7 @@ class SensorMonitor:
             state = Bridge.call("get_pir_state")
             return int(state) if state is not None else None
         except Exception as e:
-            log.error(f"Error reading PIR state: {e}")
+            log.error(f"PIR state read failed: {e}")
             return None
 
     def get_system_armed(self):
@@ -45,41 +50,41 @@ class SensorMonitor:
             state = Bridge.call("get_system_armed")
             return int(state) if state is not None else 0
         except Exception as e:
-            log.error(f"Error reading armed state: {e}")
+            log.error(f"Armed state read failed: {e}")
             return 0
 
     def get_nfc_armed(self):
-        """Read NFC armed state (from MCU RFID reader)."""
+        """Read NFC armed state from MCU RFID reader."""
         try:
             state = Bridge.call("get_nfc_armed")
             return int(state) if state is not None else 0
         except Exception as e:
-            log.error(f"Error reading NFC armed state: {e}")
+            log.error(f"NFC armed state read failed: {e}")
             return 0
 
     def set_system_armed(self, armed: bool):
-        """Control system armed state (affects LEDs and MCU state)."""
+        """Control system armed state and update MCU."""
         try:
             Bridge.call("set_system_armed", 1 if armed else 0)
-            log.info(f"System {'ARMED' if armed else 'DISARMED'} via Firebase")
+            log.info(f"System {'armed' if armed else 'disarmed'}")
         except Exception as e:
-            log.error(f"Error setting armed state: {e}")
+            log.error(f"Failed to set armed state: {e}")
 
     def set_led_green(self, state: int):
-        """Control green LED directly."""
+        """Control green LED."""
         try:
             Bridge.call("set_led_green", state)
-            log.debug(f"LED GREEN: {'ON' if state else 'OFF'}")
+            log.debug(f"Green LED: {'on' if state else 'off'}")
         except Exception as e:
-            log.error(f"Error setting green LED: {e}")
+            log.error(f"Failed to set green LED: {e}")
 
     def set_led_red(self, state: int):
-        """Control red LED directly."""
+        """Control red LED."""
         try:
             Bridge.call("set_led_red", state)
-            log.debug(f"LED RED: {'ON' if state else 'OFF'}")
+            log.debug(f"Red LED: {'on' if state else 'off'}")
         except Exception as e:
-            log.error(f"Error setting red LED: {e}")
+            log.error(f"Failed to set red LED: {e}")
 
     def set_led_armed(self, armed: bool):
         """Update LED status to match system state."""
@@ -90,9 +95,9 @@ class SensorMonitor:
             else:
                 Bridge.call("set_led_green", 0)
                 Bridge.call("set_led_red", 1)
-            log.debug(f"LED updated: {'🟢 GREEN (armed)' if armed else '🔴 RED (disarmed)'}")
+            log.debug(f"LED updated: {'green (armed)' if armed else 'red (disarmed)'}")
         except Exception as e:
-            log.error(f"Error updating LED: {e}")
+            log.error(f"Failed to update LED: {e}")
 
     def beep_entry(self):
         try:
@@ -127,16 +132,18 @@ class SensorMonitor:
 
         t = self.now_ms()
 
-        # ── Detect NFC state change ────────────────────────────────────────────
+        if self.prev_pir is not None and self.prev_pir != pir:
+            state_text = "motion detected" if pir == 1 else "no motion"
+            log.info(f"PIR: {state_text}")
+
         if self.prev_nfc_armed is not None and self.prev_nfc_armed != nfc_armed:
-            log.warning(f"🏷️  NFC TAG DETECTED: System now {'ARMED' if nfc_armed else 'DISARMED'}")
+            log.warning(f"NFC tag detected: system {'armed' if nfc_armed else 'disarmed'}")
             if on_nfc_change_callback:
                 on_nfc_change_callback(bool(nfc_armed))
-            # Update LEDs immediately
             self.set_led_armed(bool(nfc_armed))
 
-        # ── Detect entry/exit ──────────────────────────────────────────────────
         reed_triggered = (self.prev_reed is not None and self.prev_reed == 0 and reed == 1)
+
         pir_raw = (self.prev_pir is not None and self.prev_pir == 0 and pir == 1)
         pir_triggered = pir_raw and (self.last_pir_ms is None or (t - self.last_pir_ms) > PIR_DEBOUNCE_MS)
 
@@ -144,22 +151,40 @@ class SensorMonitor:
             self.last_pir_ms = t
 
         if reed_triggered:
-            if self.prev_pir == 0:
-                log.info("🚪 Reed first (ENTRY)")
-                if on_entry_callback:
-                    on_entry_callback()
-                self.beep_entry()
-            elif pir_triggered:
-                log.info("🚪 Reed after PIR (ENTRY)")
-                if on_entry_callback:
-                    on_entry_callback()
-                self.beep_entry()
+            self.reed_triggered_ms = t
+            log.debug(f"Reed triggered at {t}ms")
 
-        if pir_triggered and self.prev_reed == 0:
-            log.info("👋 PIR first (EXIT)")
-            if on_exit_callback:
-                on_exit_callback()
-            self.beep_exit()
+        if pir_triggered and self.reed_triggered_ms is not None:
+            time_since_reed = t - self.reed_triggered_ms
+            if time_since_reed <= self.event_timeout_ms:
+                log.info(f"Entry detected (Reed->PIR in {time_since_reed}ms)")
+                if on_entry_callback:
+                    on_entry_callback()
+                self.beep_entry()
+                self.reed_triggered_ms = None
+            else:
+                log.debug(f"Reed-PIR timeout: {time_since_reed}ms elapsed")
+
+        if pir_triggered:
+            self.pir_triggered_ms = t
+            log.debug(f"PIR triggered at {t}ms")
+
+        if reed_triggered and self.pir_triggered_ms is not None:
+            time_since_pir = t - self.pir_triggered_ms
+            if time_since_pir <= self.event_timeout_ms:
+                log.info(f"Exit detected (PIR->Reed in {time_since_pir}ms)")
+                if on_exit_callback:
+                    on_exit_callback()
+                self.beep_exit()
+                self.pir_triggered_ms = None
+            else:
+                log.debug(f"PIR-Reed timeout: {time_since_pir}ms elapsed")
+
+        if self.reed_triggered_ms is not None and (t - self.reed_triggered_ms) > self.event_timeout_ms:
+            self.reed_triggered_ms = None
+
+        if self.pir_triggered_ms is not None and (t - self.pir_triggered_ms) > self.event_timeout_ms:
+            self.pir_triggered_ms = None
 
         self.prev_reed = reed
         self.prev_pir = pir

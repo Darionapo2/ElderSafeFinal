@@ -17,38 +17,30 @@ def is_firebase_initialized():
 
 
 def post_event(event_data: dict):
-    """
-    Post event to Firebase Realtime Database.
-
-    Events are appended to /events with auto-generated IDs.
-    """
+    """Post event to Firebase Realtime Database."""
     if not is_firebase_initialized():
-        log.debug("Firebase not initialized, skipping event post")
+        log.debug("Firebase not initialized - event post skipped")
         return None
 
     try:
         from firebase_admin import db
         ref = db.reference("events").push(event_data)
-        log.debug(f"✓ Event posted to Firebase (ID: {ref.key})")
+        log.debug(f"Event posted to Firebase: {ref.key}")
         return ref.key
     except Exception as e:
-        log.error(f"Failed to post event to Firebase: {e}")
+        log.error(f"Firebase event post failed: {e}")
         return None
 
 
 def post_status(status_data: dict):
-    """
-    Post system status to Firebase.
-
-    Status is written to /status and overwrites previous status.
-    """
+    """Post system status to Firebase."""
     if not is_firebase_initialized():
-        log.debug("Firebase not initialized, skipping status post")
+        log.debug("Firebase not initialized - status post skipped")
         return
 
     try:
         from firebase_admin import db
         db.reference("status").set(status_data)
-        log.debug("✓ Status posted to Firebase")
+        log.debug("Status posted to Firebase")
     except Exception as e:
-        log.error(f"Failed to post status to Firebase: {e}")
+        log.error(f"Firebase status post failed: {e}")
