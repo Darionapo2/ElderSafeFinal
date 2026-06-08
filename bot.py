@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ElderSafeFinal Telegram Bot
+ElderSafeFinal Telegram Bot.
 Polls Telegram for commands and sends them to Arduino via Firebase.
 Can run on any machine (RPi, laptop, cloud).
 """
@@ -11,14 +11,8 @@ import logging
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
-
-try:
-    import firebase_admin
-    from firebase_admin import credentials, db
-    FIREBASE_AVAILABLE = True
-except ImportError:
-    FIREBASE_AVAILABLE = False
-    log.error("firebase-admin not installed")
+import firebase_admin
+from firebase_admin import credentials, db
 
 load_dotenv()
 
@@ -28,27 +22,31 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# Configuration
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-FIREBASE_CREDS = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "")
-FIREBASE_DB_URL = os.getenv("FIREBASE_DATABASE_URL", "")
+# Configuration from environment
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+FIREBASE_DB_URL = os.getenv("FIREBASE_DATABASE_URL")
 
-if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-    log.error("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in .env")
-    exit(1)
-
-if not FIREBASE_AVAILABLE or not FIREBASE_CREDS or not FIREBASE_DB_URL:
-    log.error("Firebase must be configured (firebase-admin, credentials, DB URL)")
-    exit(1)
+# Build Firebase credentials from environment variables
+firebase_creds_dict = {
+    "type": os.getenv("FIREBASE_TYPE", "service_account"),
+    "project_id": os.getenv("FIREBASE_PROJECT_ID"),
+    "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
+    "private_key": os.getenv("FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n'),
+    "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
+    "client_id": os.getenv("FIREBASE_CLIENT_ID"),
+    "auth_uri": os.getenv("FIREBASE_AUTH_URI"),
+    "token_uri": os.getenv("FIREBASE_TOKEN_URI"),
+    "auth_provider_x509_cert_url": os.getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL"),
+    "client_x509_cert_url": os.getenv("FIREBASE_CLIENT_X509_CERT_URL"),
+}
 
 # Initialize Firebase
 if not firebase_admin._apps:
-    cred = credentials.Certificate(FIREBASE_CREDS)
+    cred = credentials.Certificate(firebase_creds_dict)
     firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_DB_URL})
 
-log.info("Firebase initialized")
-log.info("Telegram bot token loaded")
+log.info("ElderSafeFinal Telegram Bot initialized")
 
 
 def send_telegram_message(text: str):
