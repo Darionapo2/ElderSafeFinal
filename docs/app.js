@@ -50,24 +50,35 @@ let isAwayFromHome = false;
 const ALERT_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 // ============================================================================
-// UI ELEMENTS
+// UI ELEMENTS & EVENT LISTENERS
 // ============================================================================
 
-const authContainer = document.getElementById('auth-container');
-const appContainer = document.getElementById('app-container');
-const loginForm = document.getElementById('login-form');
-const registerForm = document.getElementById('register-form');
-const emailInput = document.getElementById('email');
-const passwordInput = document.getElementById('password');
-const registerEmailInput = document.getElementById('register-email');
-const registerPasswordInput = document.getElementById('register-password');
-const registerPasswordConfirmInput = document.getElementById('register-password-confirm');
-const loginBtn = document.getElementById('login-btn');
-const registerBtn = document.getElementById('register-btn');
-const logoutBtn = document.getElementById('logout-btn');
-const userEmailSpan = document.getElementById('user-email');
-const eventsList = document.getElementById('events-list');
-const connectionStatus = document.getElementById('connection-status');
+let authContainer, appContainer, loginForm, registerForm, emailInput, passwordInput;
+let registerEmailInput, registerPasswordInput, registerPasswordConfirmInput;
+let loginBtn, registerBtn, logoutBtn, userEmailSpan, eventsList, connectionStatus;
+
+function setupUI() {
+    authContainer = document.getElementById('auth-container');
+    appContainer = document.getElementById('app-container');
+    loginForm = document.getElementById('login-form');
+    registerForm = document.getElementById('register-form');
+    emailInput = document.getElementById('email');
+    passwordInput = document.getElementById('password');
+    registerEmailInput = document.getElementById('register-email');
+    registerPasswordInput = document.getElementById('register-password');
+    registerPasswordConfirmInput = document.getElementById('register-password-confirm');
+    loginBtn = document.getElementById('login-btn');
+    registerBtn = document.getElementById('register-btn');
+    logoutBtn = document.getElementById('logout-btn');
+    userEmailSpan = document.getElementById('user-email');
+    eventsList = document.getElementById('events-list');
+    connectionStatus = document.getElementById('connection-status');
+
+    // Add event listeners
+    loginBtn.addEventListener('click', handleLogin);
+    registerBtn.addEventListener('click', handleRegister);
+    logoutBtn.addEventListener('click', handleLogout);
+}
 
 // ============================================================================
 // AUTHENTICATION HANDLERS
@@ -79,7 +90,7 @@ function toggleAuth(event) {
     registerForm.classList.toggle('active');
 }
 
-loginBtn.addEventListener('click', async () => {
+async function handleLogin() {
     const email = emailInput.value.trim();
     const password = passwordInput.value;
 
@@ -102,9 +113,9 @@ loginBtn.addEventListener('click', async () => {
     } finally {
         loginBtn.disabled = false;
     }
-});
+}
 
-registerBtn.addEventListener('click', async () => {
+async function handleRegister() {
     const email = registerEmailInput.value.trim();
     const password = registerPasswordInput.value;
     const passwordConfirm = registerPasswordConfirmInput.value;
@@ -138,11 +149,11 @@ registerBtn.addEventListener('click', async () => {
     } finally {
         registerBtn.disabled = false;
     }
-});
+}
 
-logoutBtn.addEventListener('click', async () => {
+async function handleLogout() {
     await auth.signOut();
-});
+}
 
 auth.onAuthStateChanged((user) => {
     currentUser = user;
@@ -493,7 +504,12 @@ function initializeApp() {
     }, 1000);
 }
 
-window.addEventListener('load', () => {
+// ============================================================================
+// APP INITIALIZATION
+// ============================================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    setupUI();
     if (currentUser) {
         initializeApp();
     }
