@@ -1,5 +1,4 @@
-// ── Firebase Configuration ──────────────────────────────────────────────────
-// TODO: Replace with your Firebase config from Firebase Console
+// Firebase Configuration
 const firebaseConfig = {
     apiKey: "AIzaSyCTxVnPDZOdw50hxynaBPgTJi3Uxnh_nS4",
     authDomain: "safenet-e969a.firebaseapp.com",
@@ -15,14 +14,28 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const database = firebase.database();
 
-// ── State ───────────────────────────────────────────────────────────────────
+// ============================================================================
+// STATE MANAGEMENT
+// ============================================================================
+
 let currentUser = null;
 let isConnected = false;
 let currentFilter = 'all';
 let statusCache = {};
 let commandInProgress = {};
 
-// ── UI Elements ─────────────────────────────────────────────────────────────
+// Timer state
+let timerInterval = null;
+let timerSeconds = 0;
+let lastExitTime = null;
+let lastEntryTime = null;
+let isAwayFromHome = false;
+const ALERT_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+// ============================================================================
+// UI ELEMENTS
+// ============================================================================
+
 const authContainer = document.getElementById('auth-container');
 const appContainer = document.getElementById('app-container');
 const loginForm = document.getElementById('login-form');
@@ -37,14 +50,16 @@ const registerBtn = document.getElementById('register-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const userEmailSpan = document.getElementById('user-email');
 const eventsList = document.getElementById('events-list');
+const connectionStatus = document.getElementById('connection-status');
 
-// ── Auth Handlers ───────────────────────────────────────────────────────────
+// ============================================================================
+// AUTHENTICATION HANDLERS
+// ============================================================================
+
 function toggleAuth(event) {
     event.preventDefault();
-    const loginForm = document.getElementById('login-form');
-    const registerForm = document.getElementById('register-form');
-    loginForm.classList.toggle('hidden');
-    registerForm.classList.toggle('hidden');
+    loginForm.classList.toggle('active');
+    registerForm.classList.toggle('active');
 }
 
 loginBtn.addEventListener('click', async () => {
@@ -52,7 +67,7 @@ loginBtn.addEventListener('click', async () => {
     const password = passwordInput.value;
 
     if (!email || !password) {
-        showError('login-error', 'Email e password sono obbligatori');
+        showError('login-error', 'Email and password are required');
         return;
     }
 
@@ -62,10 +77,10 @@ loginBtn.addEventListener('click', async () => {
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
     } catch (error) {
-        let message = 'Errore di login';
-        if (error.code === 'auth/user-not-found') message = 'Utente non trovato';
-        if (error.code === 'auth/wrong-password') message = 'Password errata';
-        if (error.code === 'auth/invalid-email') message = 'Email non valida';
+        let message = 'Login error';
+        if (error.code === 'auth/user-not-found') message = 'User not found';
+        if (error.code === 'auth/wrong-password') message = 'Wrong password';
+        if (error.code === 'auth/invalid-email') message = 'Invalid email';
         showError('login-error', message);
     } finally {
         loginBtn.disabled = false;
@@ -78,17 +93,17 @@ registerBtn.addEventListener('click', async () => {
     const passwordConfirm = registerPasswordConfirmInput.value;
 
     if (!email || !password || !passwordConfirm) {
-        showError('register-error', 'Tutti i campi sono obbligatori');
+        showError('register-error', 'All fields are required');
         return;
     }
 
     if (password !== passwordConfirm) {
-        showError('register-error', 'Le password non coincidono');
+        showError('register-error', 'Passwords do not match');
         return;
     }
 
     if (password.length < 6) {
-        showError('register-error', 'La password deve avere almeno 6 caratteri');
+        showError('register-error', 'Password must be at least 6 characters');
         return;
     }
 
@@ -98,10 +113,10 @@ registerBtn.addEventListener('click', async () => {
         authContainer.classList.add('hidden');
         appContainer.classList.remove('hidden');
     } catch (error) {
-        let message = 'Errore di registrazione';
-        if (error.code === 'auth/email-already-in-use') message = 'Email già registrata';
-        if (error.code === 'auth/invalid-email') message = 'Email non valida';
-        if (error.code === 'auth/weak-password') message = 'Password troppo debole';
+        let message = 'Registration error';
+        if (error.code === 'auth/email-already-in-use') message = 'Email already registered';
+        if (error.code === 'auth/invalid-email') message = 'Invalid email';
+        if (error.code === 'auth/weak-password') message = 'Password too weak';
         showError('register-error', message);
     } finally {
         registerBtn.disabled = false;
@@ -122,8 +137,8 @@ auth.onAuthStateChanged((user) => {
     } else {
         authContainer.classList.remove('hidden');
         appContainer.classList.add('hidden');
-        loginForm.classList.remove('hidden');
-        registerForm.classList.add('hidden');
+        loginForm.classList.add('active');
+        registerForm.classList.remove('active');
         emailInput.value = '';
         passwordInput.value = '';
         registerEmailInput.value = '';
@@ -141,10 +156,83 @@ function showError(elementId, message) {
     }, 5000);
 }
 
-// ── Firebase Listeners ──────────────────────────────────────────────────────
+// ============================================================================
+// TIMER FUNCTIONS
+// ============================================================================
+
+function formatTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function updateTimerDisplay() {
+    document.getElementById('timer-display').textContent = formatTime(timerSeconds);
+
+    // Update timer status
+    const statusEl = document.getElementById('timer-status');
+    const alertEl = document.getElementById('timer-alert');
+
+    if (isAwayFromHome) {
+        statusEl.textContent = 'Away from Home';
+        statusEl.classList.add('away');
+
+        // Check alert threshold (2 hours)
+        if (timerSeconds > ALERT_THRESHOLD_MS / 1000) {
+            alertEl.classList.add('show');
+        } else {
+            alertEl.classList.remove('show');
+        }
+    } else {
+        statusEl.textContent = 'At Home';
+        statusEl.classList.remove('away');
+        alertEl.classList.remove('show');
+    }
+}
+
+function startTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerSeconds = 0;
+    lastExitTime = new Date().toLocaleTimeString();
+    isAwayFromHome = true;
+
+    timerInterval = setInterval(() => {
+        timerSeconds++;
+        updateTimerDisplay();
+    }, 1000);
+
+    updateTimerDisplay();
+}
+
+function stopTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    lastEntryTime = new Date().toLocaleTimeString();
+    isAwayFromHome = false;
+    timerSeconds = 0;
+    updateTimerDisplay();
+}
+
+function updateTimerInfo() {
+    const exitEl = document.getElementById('last-exit-time');
+    const entryEl = document.getElementById('last-entry-time');
+
+    if (lastExitTime) exitEl.textContent = lastExitTime;
+    if (lastEntryTime) entryEl.textContent = lastEntryTime;
+}
+
+// ============================================================================
+// FIREBASE LISTENERS
+// ============================================================================
+
 function setupFirebaseListeners() {
-    // Listen to Firebase for real-time updates
     if (!currentUser) return;
+
+    // Update connection status
+    database.ref('.info/connected').on('value', (snapshot) => {
+        isConnected = snapshot.val() === true;
+        updateConnectionStatus();
+    });
 
     // Listen to status updates
     database.ref('status').on('value', (snapshot) => {
@@ -154,8 +242,9 @@ function setupFirebaseListeners() {
             updateStatusDisplay();
             updateStats();
             updateLastUpdate();
-            updateTogglesFromStatus();  // Sync toggles without sending new commands
+            updateTogglesFromStatus();
             isConnected = true;
+            updateConnectionStatus();
         }
     });
 
@@ -164,28 +253,49 @@ function setupFirebaseListeners() {
         const eventsObj = snapshot.val();
         if (eventsObj) {
             const events = Object.values(eventsObj).sort((a, b) =>
-                new Date(b.datetime) - new Date(a.datetime)
+                new Date(b.timestamp) - new Date(a.timestamp)
             );
+
+            // Handle timer based on last event
+            const lastEvent = events[0];
+            if (lastEvent) {
+                if (lastEvent.direction === 'exit') {
+                    startTimer();
+                } else if (lastEvent.direction === 'entry') {
+                    stopTimer();
+                }
+            }
+
             displayEvents(events);
         }
     });
 }
 
-function updateTogglesFromStatus() {
-    // Update toggle UI from statusCache
-    // But DO NOT resync while a command is in progress
-    if (!statusCache) return;
+function updateConnectionStatus() {
+    const statusEl = document.querySelector('.connection-status span');
+    const statusDot = document.querySelector('.status-dot');
 
-    // Only sync if no command is in progress
+    if (isConnected) {
+        statusEl.textContent = 'Connected';
+        statusDot.classList.add('connected');
+    } else {
+        statusEl.textContent = 'Disconnected';
+        statusDot.classList.remove('connected');
+    }
+}
+
+function updateTogglesFromStatus() {
+    if (!statusCache) return;
     if (Object.keys(commandInProgress).length === 0) {
         document.getElementById('toggle-armed').checked = statusCache.armed;
         document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
+        document.getElementById('toggle-sound').checked = statusCache.sound_classification;
         document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
     }
 }
 
 function updateStatusDisplay() {
-    const armed = statusCache.armed ? 'ATTIVO' : 'DISATTIVATO';
+    const armed = statusCache.armed ? 'Armed' : 'Disarmed';
     const armedClass = statusCache.armed ? 'armed' : 'disarmed';
     document.getElementById('status-armed').textContent = armed;
     document.getElementById('status-armed').className = `status-value ${armedClass}`;
@@ -197,7 +307,7 @@ function updateStatusDisplay() {
     };
 
     for (const [id, enabled] of Object.entries(statuses)) {
-        const text = enabled ? 'ABILITATO' : 'DISABILITATO';
+        const text = enabled ? 'Enabled' : 'Disabled';
         const className = enabled ? 'enabled' : 'disabled';
         document.getElementById(id).textContent = text;
         document.getElementById(id).className = `status-value ${className}`;
@@ -212,13 +322,12 @@ function updateStats() {
 }
 
 function displayEvents(events = []) {
-    // Display filtered events in UI
     const filtered = currentFilter === 'all'
         ? events
         : events.filter(e => e.direction === currentFilter);
 
     if (!filtered || filtered.length === 0) {
-        eventsList.innerHTML = '<p class="loading">Nessun evento</p>';
+        eventsList.innerHTML = '<p class="loading"><i class="fas fa-inbox"></i> No events</p>';
         return;
     }
 
@@ -226,29 +335,31 @@ function displayEvents(events = []) {
 }
 
 function createEventElement(event) {
-    const dt = new Date(event.datetime);
-    const time = dt.toLocaleTimeString('it-IT');
-    const direction = event.direction.toUpperCase();
+    const dt = new Date(event.timestamp);
+    const time = dt.toLocaleTimeString();
+    const direction = event.direction.charAt(0).toUpperCase() + event.direction.slice(1);
 
     let icon = '📍';
     let bgClass = '';
 
     if (event.direction === 'entry') {
-        icon = '📥';
+        icon = '<i class="fas fa-arrow-right" style="color: #10b981;"></i>';
         bgClass = 'entry';
     } else if (event.direction === 'exit') {
-        icon = '📤';
+        icon = '<i class="fas fa-arrow-left" style="color: #f59e0b;"></i>';
         bgClass = 'exit';
     } else if (event.direction === 'alarm') {
-        icon = '🚨';
+        icon = '<i class="fas fa-bell" style="color: #ef4444;"></i>';
         bgClass = 'alarm';
     }
 
     const anomalyScore = parseFloat(event.anomaly_score || 0);
-    const anomalyHtml = anomalyScore > 0.5 ? `<div class="event-anomaly">⚠️ Anomalia: ${anomalyScore.toFixed(2)}</div>` : '';
+    const anomalyHtml = anomalyScore > 0.5
+        ? `<div class="event-anomaly"><i class="fas fa-exclamation-triangle"></i> Anomaly: ${anomalyScore.toFixed(2)}</div>`
+        : '';
 
     return `
-        <div class="event-item">
+        <div class="event-item ${bgClass}">
             <div class="event-icon">${icon}</div>
             <div class="event-details">
                 <div class="event-time">${time}</div>
@@ -259,9 +370,11 @@ function createEventElement(event) {
     `;
 }
 
-// ── Controls ────────────────────────────────────────────────────────────────
+// ============================================================================
+// CONTROL FUNCTIONS
+// ============================================================================
+
 function sendCommand(toggleId, commandType, value) {
-    // Send command to Arduino via Firebase
     const cmdId = Date.now().toString();
     const toggleElement = document.getElementById(toggleId);
 
@@ -282,7 +395,6 @@ function sendCommand(toggleId, commandType, value) {
         status: "pending"
     });
 
-    // Wait for response (max 5 seconds)
     let checkCount = 0;
     const checkInterval = setInterval(() => {
         checkCount++;
@@ -293,23 +405,18 @@ function sendCommand(toggleId, commandType, value) {
                 commandInProgress[commandType] = false;
                 if (toggleElement) toggleElement.disabled = false;
 
-                if (cmd.status === "completed") {
-                    console.log(`✓ ${cmd.response}`);
-                } else if (cmd.status === "failed") {
-                    console.error(`✗ ${cmd.error}`);
+                if (cmd.status === "failed") {
                     if (toggleElement) toggleElement.checked = !value;
                 }
 
-                // Re-sync status from Firebase
                 updateTogglesFromStatus();
             }
         });
 
-        if (checkCount > 25) {  // 5 seconds timeout (25 * 200ms)
+        if (checkCount > 25) {
             clearInterval(checkInterval);
             commandInProgress[commandType] = false;
             if (toggleElement) toggleElement.disabled = false;
-            console.warn(`⏱️ Command ${commandType} timeout`);
             if (toggleElement) toggleElement.checked = !value;
         }
     }, 200);
@@ -325,6 +432,11 @@ function toggleKeywordSpotting() {
     sendCommand('toggle-keyword', 'set_keyword_spotting', enabled);
 }
 
+function toggleSoundClassification() {
+    const enabled = document.getElementById('toggle-sound').checked;
+    sendCommand('toggle-sound', 'set_sound_classification', enabled);
+}
+
 function toggleAnomalyDetection() {
     const enabled = document.getElementById('toggle-anomaly').checked;
     sendCommand('toggle-anomaly', 'set_anomaly_detection', enabled);
@@ -335,12 +447,11 @@ function filterEvents(type) {
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
     event.target.classList.add('active');
 
-    // Get current events from Firebase and filter
     database.ref('events').limitToLast(100).once('value', (snapshot) => {
         const eventsObj = snapshot.val();
         if (eventsObj) {
             const events = Object.values(eventsObj).sort((a, b) =>
-                new Date(b.datetime) - new Date(a.datetime)
+                new Date(b.timestamp) - new Date(a.timestamp)
             );
             displayEvents(events);
         }
@@ -349,25 +460,23 @@ function filterEvents(type) {
 
 function updateLastUpdate() {
     const now = new Date();
-    document.getElementById('last-update').textContent = now.toLocaleTimeString('it-IT');
+    document.getElementById('last-update').textContent = now.toLocaleTimeString();
 }
 
-// ── Initialize App ──────────────────────────────────────────────────────────
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
 function initializeApp() {
     if (!currentUser) return;
-
-    // Setup real-time Firebase listeners
     setupFirebaseListeners();
-
-    // Update toggles from current status
     setTimeout(() => {
         updateTogglesFromStatus();
+        updateTimerInfo();
     }, 1000);
 }
 
-// ── On Load ─────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
-    // Check if user is already logged in
     if (currentUser) {
         initializeApp();
     }
