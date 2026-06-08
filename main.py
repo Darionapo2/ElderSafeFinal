@@ -37,21 +37,45 @@ isolation_forest = load_isolation_forest()
 
 state = SystemState()
 
+# ── Sync system state with MCU on startup ──────────────────────────────────────
+try:
+    from sensors import SensorMonitor
+    monitor = SensorMonitor()
+    nfc_state = monitor.get_nfc_armed()
+    state.set_armed(bool(nfc_state))
+    monitor.set_led_armed(bool(nfc_state))
+    log.info(f"✓ System state synced from MCU: armed={bool(nfc_state)}")
+except Exception as e:
+    log.warning(f"Could not sync with MCU on startup: {e}")
+
 if FIREBASE_AVAILABLE:
     try:
         if not firebase_admin._apps:
-            creds_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+            # Build credentials dict from environment variables
+            cred_dict = {
+                "type": os.getenv("FIREBASE_TYPE", "service_account"),
+                "project_id": os.getenv("FIREBASE_PROJECT_ID"),
+                "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
+                "private_key": os.getenv("FIREBASE_PRIVATE_KEY", "").replace('\\n', '\n'),
+                "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
+                "client_id": os.getenv("FIREBASE_CLIENT_ID"),
+                "auth_uri": os.getenv("FIREBASE_AUTH_URI"),
+                "token_uri": os.getenv("FIREBASE_TOKEN_URI"),
+                "auth_provider_x509_cert_url": os.getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL"),
+                "client_x509_cert_url": os.getenv("FIREBASE_CLIENT_X509_CERT_URL"),
+            }
             db_url = os.getenv("FIREBASE_DATABASE_URL")
 
-            if creds_path and db_url:
-                cred = credentials.Certificate(creds_path)
+            # Check if all required fields are present
+            if all([cred_dict.get(k) for k in ["project_id", "private_key", "client_email"]]) and db_url:
+                cred = credentials.Certificate(cred_dict)
                 firebase_admin.initialize_app(cred, {"databaseURL": db_url})
                 setup_firebase_command_listener(state)
-                log.info("Firebase initialized")
+                log.info("✓ Firebase initialized")
             else:
-                log.warning("Firebase credentials not found in environment")
+                log.info("Firebase credentials not configured - NFC sync will be skipped")
     except Exception as e:
-        log.error(f"Firebase init failed: {e}")
+        log.warning(f"Firebase init failed: {e} - continuing without Cloud features")
 
 log.info(f"\nStarting WebSocket Microphone on port {WS_AUDIO_PORT}")
 mic = setup_audio_bricks(state)

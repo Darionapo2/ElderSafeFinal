@@ -154,6 +154,7 @@ function setupFirebaseListeners() {
             updateStatusDisplay();
             updateStats();
             updateLastUpdate();
+            updateTogglesFromStatus();  // Sync toggles without sending new commands
             isConnected = true;
         }
     });

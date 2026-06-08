@@ -79,6 +79,11 @@ def save_alarm_event(state: SystemState, alarm_type: str):
 
 def on_keyword_detected(state: SystemState):
     """Handler for keyword detection."""
+    # Only process if system is armed
+    if not state.armed:
+        log.debug("Keyword 'aiuto' detected but system is DISARMED - ignoring")
+        return
+
     log.warning("KEYWORD 'aiuto' DETECTED!")
     save_alarm_event(state, "VOICE_AIUTO")
     send_alert("RICHIESTA DI AIUTO", "Parola 'aiuto' rilevata")

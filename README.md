@@ -88,7 +88,8 @@ Sistema integrato di monitoraggio per anziani che combina sound classification, 
    # Modifica .env con i tuoi valori:
    # - TELEGRAM_BOT_TOKEN (da BotFather)
    # - TELEGRAM_CHAT_ID (il tuo chat ID)
-   # - FIREBASE_DATABASE_URL (da Firebase Console)
+   # - FIREBASE_* fields (da Firebase Console → Project Settings → Service Accounts)
+   #   Copia i campi dal JSON service account nel .env (no file path needed!)
    ```
 
 2. **Installa dipendenze**:

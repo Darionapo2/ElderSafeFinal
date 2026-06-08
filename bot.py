@@ -105,9 +105,10 @@ Ultimi Eventi:
 """
 
 
-def send_firebase_command(cmd_type: str, value: bool, timeout: int = 5) -> str:
+def send_firebase_command(cmd_type: str, value: bool, timeout: int = 15) -> str:
     """
     Send command via Firebase and wait for response.
+    Arduino polls for commands every 2 seconds, so allow more time.
 
     Returns response from Arduino or timeout message.
     """
@@ -125,25 +126,27 @@ def send_firebase_command(cmd_type: str, value: bool, timeout: int = 5) -> str:
 
         log.info(f"Command {cmd_id} sent: {cmd_type} = {value}")
 
-        # Wait for response (poll Firebase)
+        # Wait for response (Arduino polls every 2 sec, so allow 15 sec total)
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                cmd = db.reference(f"commands/{cmd_id}").get().val()
+                snapshot = db.reference(f"commands/{cmd_id}").get()
+                cmd = snapshot.val() if snapshot else None
+
                 if cmd:
                     status = cmd.get("status")
                     if status == "completed":
                         response = cmd.get("response", "Comando eseguito")
                         return f"✓ {response}"
                     elif status == "failed":
-                        error = cmd.get("error", "Errore sconosciuto")
+                        error = cmd.get("response", "Errore sconosciuto")
                         return f"✗ Errore: {error}"
             except Exception as e:
                 log.debug(f"Error reading command response: {e}")
 
-            time.sleep(0.2)  # Poll every 200ms
+            time.sleep(0.5)  # Poll every 500ms (faster than Arduino's 2 sec)
 
-        return "⏱️ Timeout: Arduino non ha risposto (comando potrebbe essere in esecuzione)"
+        return "⏱️ Timeout: Arduino non ha risposto entro 15 secondi (check connessione Firebase)"
 
     except Exception as e:
         log.error(f"Failed to send Firebase command: {e}")
