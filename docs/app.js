@@ -10,9 +10,26 @@ const firebaseConfig = {
     measurementId: "G-VS8F0627M5"
 };
 
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const database = firebase.database();
+// Initialize Firebase when ready
+let auth, database;
+
+function initializeFirebase() {
+    if (typeof firebase === 'undefined') {
+        console.error('Firebase SDK not loaded');
+        setTimeout(initializeFirebase, 100);
+        return;
+    }
+
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+
+    auth = firebase.auth();
+    database = firebase.database();
+}
+
+// Initialize Firebase immediately
+initializeFirebase();
 
 // ============================================================================
 // STATE MANAGEMENT
