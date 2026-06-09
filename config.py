@@ -1,5 +1,5 @@
 """
-Configuration and constants for ElderSafeFinal.
+Configuration and constants for SafeNet.
 """
 
 import os

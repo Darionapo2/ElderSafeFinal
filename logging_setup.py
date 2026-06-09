@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 LOG_DIR = "logs"
-LOG_FILE = os.path.join(LOG_DIR, "eldersafe.log")
+LOG_FILE = os.path.join(LOG_DIR, "safenet.log")
 
 
 def setup_logging():

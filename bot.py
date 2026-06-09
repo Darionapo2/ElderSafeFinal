@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ElderSafeFinal Telegram Bot.
+SafeNet Telegram Bot.
 Polls Telegram for commands and sends them to Arduino via Firebase.
 Can run on any machine (RPi, laptop, cloud).
 """
@@ -46,7 +46,7 @@ if not firebase_admin._apps:
     cred = credentials.Certificate(firebase_creds_dict)
     firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_DB_URL})
 
-log.info("ElderSafeFinal Telegram Bot initialized")
+log.info("SafeNet Telegram Bot initialized")
 
 
 def send_telegram_message(text: str):
@@ -151,7 +151,7 @@ def process_command(message: str) -> str:
 
     if command in ["/start", "/help"]:
         return """
-ElderSafeFinal Bot
+SafeNet Bot
 
 Available commands:
 /status - Show system status
@@ -232,7 +232,7 @@ def poll_telegram():
 
 if __name__ == "__main__":
     log.info("=" * 70)
-    log.info("ElderSafeFinal Telegram Bot")
+    log.info("SafeNet Telegram Bot")
     log.info("=" * 70)
     log.info("Mode: Firebase commands")
     log.info("Polling Telegram for commands...")

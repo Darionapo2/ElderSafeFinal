@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ElderSafeFinal - Main Entry Point
+SafeNet - Main Entry Point
 KeywordSpotting only version.
 """
 
@@ -31,7 +31,7 @@ except ImportError:
 setup_logging()
 log = logging.getLogger(__name__)
 
-log.info("ElderSafeFinal system starting")
+log.info("SafeNet system starting")
 
 init_csv()
 

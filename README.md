@@ -1,97 +1,240 @@
-# ElderSafeFinal
+# SafeNet
 
-Integrated monitoring system for elderly care combining audio classification, keyword spotting, anomaly detection for entry/exit patterns, and Telegram alerting.
+SafeNet is a smart home-monitoring and safety system built on the **Arduino UNO Q**.
+It combines physical entry/exit detection, voice keyword spotting, and a learned
+anomaly-detection model that understands a person's daily habits and raises an
+alert when something unusual happens (for example, the person leaves and does not
+return within the expected time window). Alerts are delivered to a web dashboard
+and to Telegram, and the whole system is configurable and controllable remotely.
 
-## Architecture
+---
+
+## 1. Hardware: Arduino UNO Q
+
+The UNO Q carries two processors on a single board that do not share memory:
+
+- **MPU (Qualcomm, quad-core Cortex-A)** runs a full **Linux** environment. All of
+  the Python application runs here: audio processing, the REST API, Firebase sync,
+  the machine-learning models, and the alerting logic.
+- **MCU (STM32, Cortex-M)** runs the real-time Arduino sketch (`sketch.ino`). It
+  owns the GPIO pins: it reads the reed switch and PIR sensor, drives the LEDs and
+  buzzer, and talks to the RFID/NFC reader over SPI.
+
+### The Bridge
+
+The two processors communicate through the **Bridge**, a MessagePack-RPC channel
+over a Unix socket (`/var/run/arduino-router.sock`). The Python side calls
+functions that physically execute on the microcontroller:
+
+```python
+from arduino.app_utils import Bridge
+
+state = Bridge.call("get_reed_state")   # runs digitalRead() on the MCU
+Bridge.call("beep_alarm")               # drives the buzzer on the MCU
+```
+
+On the firmware side, every callable is registered in `sketch.ino`:
+
+```cpp
+Bridge.provide("get_reed_state", get_reed_state);
+Bridge.provide("beep_alarm",    beep_alarm);
+```
+
+The Bridge client is a thread-safe singleton with automatic reconnection and
+handler re-registration, so a microcontroller reset is recovered transparently.
+
+### Pin map (`sketch.ino`)
+
+| Pin | Device           | Bridge method(s)                         |
+|-----|------------------|------------------------------------------|
+| 2   | Reed switch      | `get_reed_state`                         |
+| 3   | PIR motion       | `get_pir_state`                          |
+| 4   | Green LED        | `set_led_green`                          |
+| 7   | Red LED          | `set_led_red`                            |
+| 8   | Buzzer           | `beep_entry`, `beep_exit`, `beep_alarm`  |
+| 9   | RFID RST         | (MFRC522)                                |
+| 10  | RFID SS          | `get_nfc_armed`                          |
+
+An RFID badge toggles the global armed state directly on the MCU; the Python side
+reads the resulting state through the Bridge and synchronizes it to the cloud.
+
+---
+
+## 2. System architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Arduino UNO Q (main.py)                                    │
-├─────────────────────────────────────────────────────────────┤
-│ - WebSocket :8080 (audio streaming client)                 │
-│ - REST API :8000 (GET status, POST events)                 │
-│ - KeywordSpotting brick (keyword="aiuto")                  │
-│ - AudioClassification brick (crying_baby, scream)          │
-│ - Isolation Forest for entry/exit anomaly detection        │
-│ - CSV logging for entry/exit events                        │
-│ - Telegram Bot API alerts                                  │
-│ - Firebase Realtime Database sync                          │
-└─────────────────────────────────────────────────────────────┘
-              ^                                  ^
-              | real-time updates              | reads/writes
-              | (Firebase)                     | events
-              |                                |
-    ┌─────────┴──────────────────┐   ┌────────┴──────────┐
-    │ Dashboard Web              │   │ Firebase Realtime  │
-    │ (GitHub Pages)             │   │ Database           │
-    │ - Email/Password login     │   │ - Events log       │
-    │ - Real-time timeline       │   │ - System status    │
-    │ - Stats + arm/disarm       │   │ - Configuration    │
-    │   (Telegram commands)      │   │                    │
-    └────────────────────────────┘   └────────────────────┘
+            MCU (sketch.ino)                        MPU - Linux (main.py)
+            ----------------                        ---------------------
+   reed / PIR / RFID  --digitalRead-->|
+   LEDs / buzzer      --tone/write--->|  Bridge RPC
+                                      |<----- sensors.py / sensor_loop.py
+                                      |       (entry/exit/NFC detection)
+   USB mic --audio--> WebSocket :8080 -----> Microphone -> KeywordSpotting ("aiuto")
+                                      |
+                                      |  REST API :8000   (status / events / control)
+                                      |  Firebase sync    (status, events, monitoring, config)
+                                      |  Telegram alerts
+                                      |  Anomaly models   (Isolation Forest + absence model)
+                                      |
+            +-------------------------+--------------------------+
+            |                                                    |
+     Firebase Realtime DB                                  Telegram Bot
+            |                                                    |
+     Web Dashboard (GitHub Pages)                          bot.py (optional)
 ```
 
-## Modular Components
+The system is **push-based**: the device pushes its state and events to Firebase,
+and the dashboard and bot subscribe to them. No inbound port forwarding is needed.
 
-### Entry Point
-- **`main.py`** — Main orchestration, coordinates all components
+---
 
-### Core Modules
+## 3. Subsystems
 
-- **`config.py`** — Constants and configuration (ports, paths, credentials)
-- **`models.py`** — `SystemState` class (thread-safe), model loading
-- **`csv_handler.py`** — CSV read/write operations
-- **`telegram.py`** — Telegram Bot API for alerts
-- **`firebase.py`** — Firebase Realtime Database sync
-- **`events.py`** — Event logging logic and handlers (keyword, sound, anomaly)
-- **`audio_bricks.py`** — KeywordSpotting and AudioClassification setup
-- **`anomaly_detection.py`** — Isolation Forest logic and monitoring loop
-- **`sensor_loop.py`** — Hardware sensor monitoring (Reed, PIR, NFC)
-- **`firebase_commands.py`** — Firebase command polling
-- **`api.py`** — Flask REST API endpoints (:8000)
+### 3.1 Passage detection (entry / exit / NFC)
 
-**Server Features**:
-- WebSocket Microphone (:8080) for audio streaming
-- REST API (:8000) with `/api/status`, `/api/events`, `/api/control`, `/api/health`
-- Audio bricks: KeywordSpotting ("aiuto") + AudioClassification (crying_baby, scream)
-- Isolation Forest for anomaly detection on entry/exit patterns
-- Local CSV logging for entry/exit events
-- Telegram alerts for: keywords, dangerous sounds, anomalies
-- Firebase events for real-time dashboard
+`sensor_loop.py` polls the sensors through `sensors.py` every 50 ms and detects
+the direction of a passage from the order in which the reed switch and PIR fire
+(reed-then-PIR is an entry, PIR-then-reed is an exit), with debouncing to reject
+noise. Each passage is logged to the local CSV (`door_log.csv`) and pushed to
+Firebase. An NFC badge arms or disarms the whole system; the change is mirrored to
+Firebase immediately.
 
-### 2. `dataset_generator.py`
-- Generates synthetic dataset with regular daily habits
-- Patterns: Mon-Fri exits 8-9am, returns 12-1pm, exits 3-4pm, returns 7-8pm
-- Trains Isolation Forest model offline
-- Saves model to `isolation_forest_model.pkl`
+### 3.2 Voice keyword spotting
 
-### 3. `docs/` (Dashboard - GitHub Pages)
-- `index.html`: interface with Firebase Email/Password login
-- `app.js`: real-time logic from Firebase
-- `style.css`: responsive styling
-- Displays:
-  - Timeline of entries/exits/alarms
-  - Statistics (total events, anomalies)
-  - System status (armed/disarmed)
-  - Arm/disarm commands via Telegram bot
+`audio_bricks.py` opens a WebSocket microphone on port 8080 and runs the
+`KeywordSpotting` brick (an Edge Impulse model). When the keyword "aiuto" (Italian
+for "help") is detected while the system is armed, SafeNet logs an alarm, sounds
+the buzzer, and sends a Telegram alert.
 
-### 4. `bot.py` (optional - Telegram Bot)
-- Polls Telegram for user commands
-- Arduino executes: arm/disarm, enable/disable features
-- Optional if using only unidirectional alerts
+### 3.3 Anomaly detection
 
-## Setup & Running
+SafeNet uses **two complementary detectors** that share a single retraining
+pipeline. Both notify only the dashboard and Telegram (no buzzer).
 
-### Arduino UNO Q
+**Detector A - Unusual-time events (Isolation Forest).**
+`anomaly_detection.py` scores each entry/exit event with an Isolation Forest over
+six features (hour of day, day of week, time since last event, event type, time
+bucket, weekend flag). An event that is unusual for its time of day (for example,
+an exit at 3 a.m.) raises an alert. Its reactivity is controlled by the
+**Unusual-time sensitivity** slider.
 
-1. **Clone repo and configure environment**:
+**Detector B - Overdue return (statistical absence model).**
+The Isolation Forest cannot predict *when* a person should be back, so the
+expected-return logic is handled by a simple, explainable statistical model
+(`absence_model.py`). From the learned history it computes, per time bucket
+(hour-bucket x weekend), the distribution of how long the person usually stays out
+between an exit and the following entry. For each new exit it derives:
+
+- an **expected return time** (mean absence duration),
+- an **expected return window** (mean +/- one standard deviation),
+- a **late deadline** = `expected + k * std`, where `k` comes from the
+  **Return-late sensitivity** slider (higher sensitivity = smaller `k` = earlier
+  alert).
+
+`absence_tracker.py` runs the state machine: it opens an absence on an exit,
+closes it on the matching entry, and a background loop fires the overdue alert
+when the deadline passes. When a bucket has too little history the model falls
+back to the global distribution (and flags the estimate as low-confidence).
+
+**Toggle semantics.** Absence tracking and the dashboard clock always run,
+regardless of the anomaly-detection toggle. The toggle only gates **alert
+emission**, evaluated continuously: if detection is off when the deadline passes
+and is turned back on while the person is still out (and no alert has fired yet),
+the alert fires at that moment.
+
+**Manual dismiss.** From the dashboard the caregiver can dismiss an active overdue
+alert in advance if they know the prediction is wrong (for example, the person is
+legitimately away longer). This cancels the alert for the current absence only and
+does not change the model.
+
+### 3.4 Retraining (sliding obsolescence window)
+
+`retraining.py` rebuilds both models from the same windowed history:
+
+- The training set is the **synthetic seed plus all real CSV events**, keeping only
+  events within the last `HABIT_WINDOW_DAYS` (default 120 days, about four months).
+- The synthetic dataset stands in for the person's real habits up to deploy time
+  (we do not have time to collect them first). It is anchored to end at the deploy
+  date and **ages out of the window naturally** as real events accumulate, so the
+  model gradually adapts to the real person without any explicit phase switch.
+- If the person's routine changes, old habits leave the window within a few months
+  and the model realigns.
+
+Retraining runs **automatically once a day** at `RETRAIN_HOUR` (default 03:00) and
+**on demand** from the dashboard "Retrain model now" button. Each run reads the
+full CSV, so newly accumulated events are always included.
+
+### 3.5 REST API (`api.py`, port 8000)
+
+| Method | Endpoint        | Purpose                                   |
+|--------|-----------------|-------------------------------------------|
+| GET    | `/api/health`   | Liveness check                            |
+| GET    | `/api/status`   | Armed state, feature flags, event counts  |
+| GET    | `/api/events`   | Recent events with optional filtering     |
+| POST   | `/api/control`  | Arm/disarm and toggle features locally    |
+
+### 3.6 Telegram (`telegram.py`, `bot.py`)
+
+`telegram.py` sends alert messages from the device. The optional `bot.py` can run
+anywhere and lets a user control the system from Telegram (`/arm`, `/disarm`,
+`/enable_anomaly`, `/disable_anomaly`, `/status`, ...). Commands are delivered to
+the device through Firebase, exactly like the dashboard.
+
+### 3.7 Web dashboard (`docs/`, GitHub Pages)
+
+A static site with Firebase Email/Password login that shows, in real time:
+
+- System controls (arm/disarm, keyword spotting, anomaly detection).
+- An **Anomaly Detection** panel with the two sensitivity sliders, the
+  "Retrain model now" button, and a live model-status line.
+- An **Active Absence** card with a live clock counting up from the exit, the
+  expected return window, the overdue deadline, a progress bar, and a Dismiss
+  button. It appears only while the person is out.
+- Statistics and a **horizontal event timeline** (entries, exits, alarms,
+  anomalies).
+
+The dashboard treats Firebase as the single source of truth: every status push
+re-applies the authoritative state to the toggles and labels.
+
+---
+
+## 4. Firebase data model
+
+```
+/status/                      device state, pushed on every change + every 10s
+    armed, keyword_spotting, anomaly_detection, last_update
+
+/events/{push_id}             entry / exit / alarm / anomaly events
+    id, datetime, direction, anomaly_type, anomaly_score, ...
+
+/monitoring/absence/          current absence (drives the live clock)
+    active, exit_time, expected_return_at, window_start, window_end,
+    late_deadline_at, status, alerted, dismissed, confidence
+
+/model/status/                training status
+    last_trained_at, training_window_days, real_events_in_window,
+    synthetic_in_window, training_samples, trained
+
+/config/anomaly/              sensitivities (dashboard writes, device reads)
+    unusual_time_sensitivity, return_late_sensitivity
+
+/commands/{id}                control channel with acknowledgement
+    type, value, source, timestamp, status, response
+    types: set_armed, set_keyword_spotting, set_anomaly_detection,
+           set_sound_classification, retrain_model, dismiss_absence
+```
+
+---
+
+## 5. Setup and running
+
+### Device (Arduino UNO Q)
+
+1. **Configure the environment**:
    ```bash
    cp .env.example .env
-   # Edit .env with your values:
-   # - TELEGRAM_BOT_TOKEN (from BotFather)
-   # - TELEGRAM_CHAT_ID (your chat ID)
-   # - FIREBASE_* fields (from Firebase Console → Project Settings)
-   #   Copy fields from service account JSON to .env
+   # Set TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, and the FIREBASE_* fields
+   # (copied from your Firebase service-account JSON).
    ```
 
 2. **Install dependencies**:
@@ -99,127 +242,89 @@ Integrated monitoring system for elderly care combining audio classification, ke
    pip install -r requirements.txt
    ```
 
-3. **Generate and train Isolation Forest model** (offline):
+3. **Generate the synthetic baseline and initial model** (anchored to today):
    ```bash
    python dataset_generator.py
-   # Creates: isolation_forest_model.pkl, synthetic_habits.csv
+   # Produces synthetic_habits.csv and isolation_forest_model.pkl
    ```
 
-4. **Start server**:
+4. **Run the system**:
    ```bash
    python main.py
    ```
-   
-   Expected output:
-   ```
-   ElderSafeFinal system starting
-   CSV initialized: door_log.csv
-   Isolation Forest loaded
-   Starting WebSocket microphone on port 8080
-   KeywordSpotting brick configured
-   Starting REST API on port 8000
-   System ready. Press Ctrl+C to stop.
-   ```
+   On startup SafeNet rebuilds both models from the windowed history (also
+   creating `absence_stats.pkl`), then starts the audio, sensor, anomaly,
+   retraining, and API threads.
 
 ### Dashboard (GitHub Pages)
 
-1. Enable GitHub Pages in repo settings → deploy from `/docs`
-2. Configure Firebase in `docs/app.js`:
-   ```javascript
-   const firebaseConfig = {
-     apiKey: "YOUR_API_KEY",
-     authDomain: "your-project.firebaseapp.com",
-     databaseURL: "https://your-project.firebaseio.com",
-     ...
-   };
-   ```
-3. Create Firebase Email/Password user
-4. Push to main → dashboard live at `https://username.github.io/ElderSafeFinal/`
+1. Enable GitHub Pages and serve from the `/docs` folder.
+2. The Firebase web config is already set in `docs/app.js`.
+3. Create a Firebase Email/Password user to log in.
 
-## Features
+### Telegram bot (optional)
 
-- Real-time keyword spotting ("aiuto")
-- Sound classification (crying_baby, scream, fall, glass_breaking)
-- Anomaly detection on entry/exit patterns (Isolation Forest)
-- Instant Telegram alerts
-- Web dashboard with login
-- Local CSV logging on Arduino
-- Firebase sync for remote viewing
-
-## Logged Events
-
-```csv
-id, datetime, date, time, direction, first_sensor, delta_ms, anomaly_score
-1, 2026-06-03 08:15:30.123, 2026-06-03, 08:15:30, entry, REED, 0, 0.15
-2, 2026-06-03 12:45:10.456, 2026-06-03, 12:45:10, exit, PIR, 1050000, 0.08
-3, 2026-06-03 15:30:45.789, 2026-06-03, 15:30:45, alarm, VOICE, 0, 1.0
+```bash
+python bot.py
 ```
 
-## Isolation Forest Model
+---
 
-**Features:**
-- `hour_of_day`: hour of day (0-23)
-- `day_of_week`: day of week (0=Monday, 6=Sunday)
-- `time_since_last_event`: seconds since last event
-- `event_type`: entry (0) or exit (1)
-- `time_of_day_bucket`: time bucket (0=6-12, 1=12-18, 2=18-00, 3=00-06)
+## 6. Configuration reference (`config.py`)
 
-**Anomaly threshold:** anomaly_score > 0.5
+| Constant                          | Default | Meaning                                              |
+|-----------------------------------|---------|------------------------------------------------------|
+| `WS_AUDIO_PORT`                   | 8080    | WebSocket microphone port                            |
+| `API_PORT`                        | 8000    | REST API port                                        |
+| `CONFIDENCE`                      | 0.80    | Keyword-spotting confidence threshold                |
+| `HABIT_WINDOW_DAYS`               | 120     | Sliding training window (obsolescence horizon)       |
+| `RETRAIN_HOUR`                    | 3       | Hour of the daily automatic retrain                  |
+| `ANOMALY_CHECK_INTERVAL`          | 60      | Seconds between unusual-time checks                  |
+| `ABSENCE_DEADLINE_CHECK_INTERVAL` | 5       | Seconds between overdue-deadline checks              |
+| `MIN_BUCKET_SAMPLES`              | 3       | Min samples before a bucket's window is trusted      |
+| `DEFAULT_UNUSUAL_TIME_SENSITIVITY`| 50      | Initial Detector A sensitivity (0..100)              |
+| `DEFAULT_RETURN_LATE_SENSITIVITY` | 50      | Initial Detector B sensitivity (0..100)              |
 
-## Firebase Security Rules
+The two sensitivities are mapped to internal parameters by
+`unusual_time_threshold()` and `return_late_k()`, and can be changed live from the
+dashboard sliders.
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /elderly/{uid} {
-      allow read: if request.auth.uid == uid;
-      allow write: if request.auth.uid == uid || request.auth.token.admin == true;
-    }
-  }
-}
-```
+---
 
-## Module Structure
+## 7. Project structure
 
 ```
-ElderSafeFinal/
-├── main.py                    # Entry point
-├── config.py                  # Constants
-├── models.py                  # SystemState + model loading
-├── csv_handler.py             # CSV I/O
-├── telegram.py                # Telegram alerts
-├── firebase.py                # Firebase sync
-├── events.py                  # Event handlers
-├── audio_bricks.py            # Brick setup
-├── sensor_loop.py             # Sensor monitoring
-├── anomaly_detection.py       # Isolation Forest logic
-├── api.py                     # Flask REST API
-├── sensors.py                 # Sensor interface
-├── dataset_generator.py       # Training script
-├── bot.py                     # Optional Telegram bot
-├── requirements.txt           # Dependencies
-├── sketch.ino                 # Arduino MCU firmware
-└── docs/                      # Dashboard (GitHub Pages)
+.
+├── main.py                 # Entry point, thread orchestration
+├── config.py               # Constants and sensitivity mappings
+├── models.py               # SystemState (thread-safe) + model loading
+├── ml_features.py          # Shared Isolation Forest feature engineering
+├── anomaly_detection.py    # Detector A: unusual-time events
+├── absence_model.py        # Detector B: absence-duration statistics
+├── absence_tracker.py      # Detector B runtime: state machine + deadline loop
+├── retraining.py           # Sliding-window daily/on-demand retraining
+├── dataset_generator.py    # Synthetic habit generator (anchored to deploy date)
+├── sensors.py              # Bridge sensor/actuator interface
+├── sensor_loop.py          # Passage and NFC monitoring loop
+├── events.py               # Event logging and alert handlers
+├── csv_handler.py          # Local CSV I/O
+├── firebase.py             # Firebase Realtime Database helpers
+├── firebase_commands.py    # Command polling + live config sync
+├── telegram.py             # Telegram alert sender
+├── bot.py                  # Optional Telegram control bot
+├── api.py                  # Flask REST API
+├── logging_setup.py        # File + console logging
+├── sketch.ino              # MCU firmware (sensors, LEDs, buzzer, RFID)
+└── docs/                   # Web dashboard (GitHub Pages)
+    ├── index.html
+    ├── app.js
+    └── style.css
 ```
 
-## Testing
+---
 
-1. Test modules locally in order: config → models → csv_handler → audio_bricks → main
-2. Setup Firebase and update credentials
-3. Test dashboard on localhost
-4. Push to GitHub and enable GitHub Pages
-5. Deploy to Arduino UNO Q
-6. Optional: integrate bot.py for Telegram commands
-7. End-to-end testing with real sensors
+## 8. Requirements
 
-## Requirements
-
-See `requirements.txt`:
-- numpy
-- websockets
-- flask
-- requests
-- scikit-learn
-- firebase-admin
-- python-dotenv
+See `requirements.txt`: numpy, websockets, cryptography, flask, requests,
+scikit-learn, firebase-admin, pandas, python-dotenv. The `arduino-app-bricks`
+package (Microphone, KeywordSpotting, Bridge, App) is pre-installed on the device.
