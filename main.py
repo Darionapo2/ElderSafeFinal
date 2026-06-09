@@ -126,6 +126,13 @@ if FIREBASE_AVAILABLE and firebase_admin._apps:
                     "last_update": datetime.now().isoformat()
                 }
                 db.reference("status").set(status)
+
+                try:
+                    is_armed = state.armed and (state.keyword_spotting_enabled or state.anomaly_detection_enabled)
+                    monitor.set_led_armed(is_armed)
+                except Exception as e:
+                    log.debug(f"LED sync failed: {e}")
+
                 log.debug("Status synced")
             except Exception as e:
                 log.debug(f"Status sync error: {e}")
