@@ -99,35 +99,18 @@ def execute_command(cmd_id: str, cmd_data: dict, state: SystemState):
             try:
                 from sensors import SensorMonitor
                 monitor = SensorMonitor()
-                is_armed = bool(value) and (state.keyword_spotting_enabled or state.anomaly_detection_enabled)
-                monitor.set_led_armed(is_armed)
-                log.info(f"LED updated: armed={bool(value)}, features_enabled={state.keyword_spotting_enabled or state.anomaly_detection_enabled}")
+                monitor.set_system_armed(bool(value))
+                log.info(f"System armed state set to {bool(value)}")
             except Exception as e:
-                log.debug(f"LED update failed: {e}")
+                log.debug(f"System armed update failed: {e}")
 
         elif command_type == "set_keyword_spotting":
             state.set_keyword_spotting(bool(value))
             response = f"Keyword spotting {'enabled' if value else 'disabled'}"
-            try:
-                from sensors import SensorMonitor
-                monitor = SensorMonitor()
-                is_armed = state.armed and (state.keyword_spotting_enabled or state.anomaly_detection_enabled)
-                monitor.set_led_armed(is_armed)
-                log.info(f"LED updated: armed={state.armed}, features_enabled={state.keyword_spotting_enabled or state.anomaly_detection_enabled}")
-            except Exception as e:
-                log.debug(f"LED update failed: {e}")
 
         elif command_type == "set_anomaly_detection":
             state.set_anomaly_detection(bool(value))
             response = f"Anomaly detection {'enabled' if value else 'disabled'}"
-            try:
-                from sensors import SensorMonitor
-                monitor = SensorMonitor()
-                is_armed = state.armed and (state.keyword_spotting_enabled or state.anomaly_detection_enabled)
-                monitor.set_led_armed(is_armed)
-                log.info(f"LED updated: armed={state.armed}, features_enabled={state.keyword_spotting_enabled or state.anomaly_detection_enabled}")
-            except Exception as e:
-                log.debug(f"LED update failed: {e}")
 
         elif command_type == "set_sound_classification":
             state.set_sound_classification(bool(value))

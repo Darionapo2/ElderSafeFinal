@@ -193,16 +193,11 @@ function setupFirebaseListeners() {
 }
 
 function updateTogglesFromStatus() {
-    // Update toggle UI from statusCache
-    // But DO NOT resync while a command is in progress
     if (!statusCache) return;
 
-    // Only sync if no command is in progress
-    if (Object.keys(commandInProgress).length === 0) {
-        document.getElementById('toggle-armed').checked = statusCache.armed;
-        document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
-        document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
-    }
+    document.getElementById('toggle-armed').checked = statusCache.armed;
+    document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
+    document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
 
     updateDependentToggles();
 }
@@ -212,6 +207,7 @@ function updateStatusDisplay() {
     const armedClass = statusCache.armed ? 'armed' : 'disarmed';
     document.getElementById('status-armed').textContent = armed;
     document.getElementById('status-armed').className = `status-value ${armedClass}`;
+    document.getElementById('toggle-armed').checked = statusCache.armed;
 
     const statuses = {
         'status-keyword': statusCache.keyword_spotting,
@@ -224,6 +220,9 @@ function updateStatusDisplay() {
         document.getElementById(id).textContent = text;
         document.getElementById(id).className = `status-value ${className}`;
     }
+
+    document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
+    document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
 }
 
 function updateStats() {

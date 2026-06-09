@@ -39,12 +39,11 @@ state = SystemState()
 try:
     from sensors import SensorMonitor
     monitor = SensorMonitor()
-    nfc_state = monitor.get_nfc_armed()
-    state.set_armed(bool(nfc_state))
-    monitor.set_led_armed(bool(nfc_state))
-    log.info(f"MCU state synchronized: armed={bool(nfc_state)}")
+    state.set_armed(False)
+    monitor.set_system_armed(False)
+    log.info("System initialized in disarmed state")
 except Exception as e:
-    log.warning(f"MCU synchronization failed: {e}")
+    log.warning(f"MCU initialization failed: {e}")
 
 if FIREBASE_AVAILABLE:
     try:
@@ -126,13 +125,6 @@ if FIREBASE_AVAILABLE and firebase_admin._apps:
                     "last_update": datetime.now().isoformat()
                 }
                 db.reference("status").set(status)
-
-                try:
-                    is_armed = state.armed and (state.keyword_spotting_enabled or state.anomaly_detection_enabled)
-                    monitor.set_led_armed(is_armed)
-                except Exception as e:
-                    log.debug(f"LED sync failed: {e}")
-
                 log.debug("Status synced")
             except Exception as e:
                 log.debug(f"Status sync error: {e}")
