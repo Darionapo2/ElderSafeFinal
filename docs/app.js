@@ -1,5 +1,4 @@
 // ── Firebase Configuration ──────────────────────────────────────────────────
-// TODO: Replace with your Firebase config from Firebase Console
 const firebaseConfig = {
     apiKey: "AIzaSyCTxVnPDZOdw50hxynaBPgTJi3Uxnh_nS4",
     authDomain: "safenet-e969a.firebaseapp.com",
@@ -20,6 +19,7 @@ let currentUser = null;
 let isConnected = false;
 let currentFilter = 'all';
 let statusCache = {};
+let allEventsCache = [];
 let commandInProgress = {};
 let lastSyncTime = Date.now();
 let syncTimerInterval = null;
@@ -162,78 +162,77 @@ function startSyncTimer() {
 
 // ── Firebase Listeners ──────────────────────────────────────────────────────
 function setupFirebaseListeners() {
-    // Listen to Firebase for real-time updates
     if (!currentUser) return;
 
-    // Listen to status updates
+    // Status listener: drives all toggle and label updates
     database.ref('status').on('value', (snapshot) => {
         const status = snapshot.val();
         if (status) {
             statusCache = status;
             updateStatusDisplay();
-            updateStats();
             updateLastUpdate();
-            updateTogglesFromStatus();
             updateSyncTime();
             isConnected = true;
         }
     });
 
-    // Listen to events updates
-    database.ref('events').limitToLast(100).on('value', (snapshot) => {
+    // Events listener: drives stats and timeline (no limit — counts are authoritative)
+    database.ref('events').on('value', (snapshot) => {
         const eventsObj = snapshot.val();
         if (eventsObj) {
-            const events = Object.values(eventsObj).sort((a, b) =>
+            allEventsCache = Object.values(eventsObj).sort((a, b) =>
                 new Date(b.datetime) - new Date(a.datetime)
             );
-            displayEvents(events);
-            updateSyncTime();
+        } else {
+            allEventsCache = [];
         }
+        displayEvents(allEventsCache);
+        updateStats();
+        updateSyncTime();
     });
 }
 
-function updateTogglesFromStatus() {
+// ── Status Display ──────────────────────────────────────────────────────────
+// Single source of truth: always reads from statusCache (populated by Firebase listener).
+// Called on every status update — overrides any local optimistic state.
+function updateStatusDisplay() {
     if (!statusCache) return;
 
-    document.getElementById('toggle-armed').checked = statusCache.armed;
-    document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
-    document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
+    const armed = statusCache.armed;
+    const keyword = statusCache.keyword_spotting;
+    const anomaly = statusCache.anomaly_detection;
 
-    updateDependentToggles();
+    // System toggle
+    document.getElementById('status-armed').textContent = armed ? 'ARMED' : 'DISARMED';
+    document.getElementById('status-armed').className = `status-value ${armed ? 'armed' : 'disarmed'}`;
+    document.getElementById('toggle-armed').checked = armed;
+
+    // Keyword spotting
+    document.getElementById('status-keyword').textContent = keyword ? 'ENABLED' : 'DISABLED';
+    document.getElementById('status-keyword').className = `status-value ${keyword ? 'enabled' : 'disabled'}`;
+    document.getElementById('toggle-keyword').checked = keyword;
+    document.getElementById('toggle-keyword').disabled = !armed;
+    document.getElementById('danger-signals-card').style.opacity = armed ? '1' : '0.5';
+
+    // Anomaly detection
+    document.getElementById('status-anomaly').textContent = anomaly ? 'ENABLED' : 'DISABLED';
+    document.getElementById('status-anomaly').className = `status-value ${anomaly ? 'enabled' : 'disabled'}`;
+    document.getElementById('toggle-anomaly').checked = anomaly;
+    document.getElementById('toggle-anomaly').disabled = !armed;
+    document.getElementById('anomaly-detection-card').style.opacity = armed ? '1' : '0.5';
 }
 
-function updateStatusDisplay() {
-    const armed = statusCache.armed ? 'ARMED' : 'DISARMED';
-    const armedClass = statusCache.armed ? 'armed' : 'disarmed';
-    document.getElementById('status-armed').textContent = armed;
-    document.getElementById('status-armed').className = `status-value ${armedClass}`;
-    document.getElementById('toggle-armed').checked = statusCache.armed;
-
-    const statuses = {
-        'status-keyword': statusCache.keyword_spotting,
-        'status-anomaly': statusCache.anomaly_detection,
-    };
-
-    for (const [id, enabled] of Object.entries(statuses)) {
-        const text = enabled ? 'ENABLED' : 'DISABLED';
-        const className = enabled ? 'enabled' : 'disabled';
-        document.getElementById(id).textContent = text;
-        document.getElementById(id).className = `status-value ${className}`;
-    }
-
-    document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
-    document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
-}
-
+// ── Stats ───────────────────────────────────────────────────────────────────
+// Counts derived from Firebase events — no CSV dependency.
 function updateStats() {
-    document.getElementById('stat-total').textContent = statusCache.total_events || 0;
-    document.getElementById('stat-entries').textContent = statusCache.entries || 0;
-    document.getElementById('stat-exits').textContent = statusCache.exits || 0;
-    document.getElementById('stat-alarms').textContent = statusCache.alarms || 0;
+    document.getElementById('stat-total').textContent = allEventsCache.length;
+    document.getElementById('stat-entries').textContent = allEventsCache.filter(e => e.direction === 'entry').length;
+    document.getElementById('stat-exits').textContent = allEventsCache.filter(e => e.direction === 'exit').length;
+    document.getElementById('stat-alarms').textContent = allEventsCache.filter(e => e.direction === 'alarm').length;
 }
 
+// ── Events Display ──────────────────────────────────────────────────────────
 function displayEvents(events = []) {
-    // Display filtered events in UI
     const filtered = currentFilter === 'all'
         ? events
         : events.filter(e => e.direction === currentFilter);
@@ -243,7 +242,7 @@ function displayEvents(events = []) {
         return;
     }
 
-    eventsList.innerHTML = filtered.map(event => createEventElement(event)).join('');
+    eventsList.innerHTML = filtered.slice(0, 50).map(event => createEventElement(event)).join('');
 }
 
 function createEventElement(event) {
@@ -252,21 +251,19 @@ function createEventElement(event) {
     const direction = event.direction.toUpperCase();
 
     let icon = '📍';
-    let bgClass = '';
 
     if (event.direction === 'entry') {
         icon = '<i class="fas fa-arrow-right" style="color: #10b981;"></i>';
-        bgClass = 'entry';
     } else if (event.direction === 'exit') {
         icon = '<i class="fas fa-arrow-left" style="color: #f59e0b;"></i>';
-        bgClass = 'exit';
     } else if (event.direction === 'alarm') {
         icon = '<i class="fas fa-bell" style="color: #ef4444;"></i>';
-        bgClass = 'alarm';
     }
 
     const anomalyScore = parseFloat(event.anomaly_score || 0);
-    const anomalyHtml = anomalyScore > 0.5 ? `<div class="event-anomaly"><i class="fas fa-exclamation-triangle"></i> Anomaly: ${anomalyScore.toFixed(2)}</div>` : '';
+    const anomalyHtml = anomalyScore > 0.5
+        ? `<div class="event-anomaly"><i class="fas fa-exclamation-triangle"></i> Anomaly: ${anomalyScore.toFixed(2)}</div>`
+        : '';
 
     return `
         <div class="event-item">
@@ -282,7 +279,6 @@ function createEventElement(event) {
 
 // ── Controls ────────────────────────────────────────────────────────────────
 function sendCommand(toggleId, commandType, value) {
-    // Send command to Arduino via Firebase
     const cmdId = Date.now().toString();
     const toggleElement = document.getElementById(toggleId);
 
@@ -303,7 +299,8 @@ function sendCommand(toggleId, commandType, value) {
         status: "pending"
     });
 
-    // Wait for response (max 5 seconds)
+    // Poll for Arduino acknowledgement; Firebase status listener will have
+    // already updated the UI by the time this fires in most cases.
     let checkCount = 0;
     const checkInterval = setInterval(() => {
         checkCount++;
@@ -314,23 +311,21 @@ function sendCommand(toggleId, commandType, value) {
                 commandInProgress[commandType] = false;
                 if (toggleElement) toggleElement.disabled = false;
 
-                if (cmd.status === "completed") {
-                    console.log(`✓ ${cmd.response}`);
-                } else if (cmd.status === "failed") {
-                    console.error(`✗ ${cmd.error}`);
+                if (cmd.status === "failed") {
+                    console.error(`Command failed: ${cmd.error}`);
                     if (toggleElement) toggleElement.checked = !value;
                 }
 
-                // Re-sync status from Firebase
-                updateTogglesFromStatus();
+                // Re-apply authoritative state from Firebase
+                updateStatusDisplay();
             }
         });
 
-        if (checkCount > 25) {  // 5 seconds timeout (25 * 200ms)
+        if (checkCount > 25) {
             clearInterval(checkInterval);
             commandInProgress[commandType] = false;
             if (toggleElement) toggleElement.disabled = false;
-            console.warn(`⏱️ Command ${commandType} timeout`);
+            console.warn(`Command ${commandType} timeout`);
             if (toggleElement) toggleElement.checked = !value;
         }
     }, 200);
@@ -339,26 +334,39 @@ function sendCommand(toggleId, commandType, value) {
 function toggleArmed() {
     const armed = document.getElementById('toggle-armed').checked;
     sendCommand('toggle-armed', 'set_armed', armed);
-    updateDependentToggles();
+    // Immediate optimistic visual feedback while waiting for Arduino round-trip
+    applyArmedVisuals(armed);
 }
 
-function updateDependentToggles() {
-    const armedCheckbox = document.getElementById('toggle-armed');
+// Applies immediate visual state for armed/disarmed without waiting for Firebase.
+// updateStatusDisplay() will correct this with authoritative state on next sync.
+function applyArmedVisuals(armed) {
     const keywordToggle = document.getElementById('toggle-keyword');
     const anomalyToggle = document.getElementById('toggle-anomaly');
 
-    if (armedCheckbox.checked) {
-        keywordToggle.disabled = false;
-        anomalyToggle.disabled = false;
-        document.getElementById('danger-signals-card').style.opacity = '1';
-        document.getElementById('anomaly-detection-card').style.opacity = '1';
+    document.getElementById('status-armed').textContent = armed ? 'ARMED' : 'DISARMED';
+    document.getElementById('status-armed').className = `status-value ${armed ? 'armed' : 'disarmed'}`;
+
+    keywordToggle.disabled = !armed;
+    anomalyToggle.disabled = !armed;
+    document.getElementById('danger-signals-card').style.opacity = armed ? '1' : '0.5';
+    document.getElementById('anomaly-detection-card').style.opacity = armed ? '1' : '0.5';
+
+    if (armed) {
+        // Optimistic: system ON re-enables both features (Arduino will confirm)
+        keywordToggle.checked = true;
+        anomalyToggle.checked = true;
+        document.getElementById('status-keyword').textContent = 'ENABLED';
+        document.getElementById('status-keyword').className = 'status-value enabled';
+        document.getElementById('status-anomaly').textContent = 'ENABLED';
+        document.getElementById('status-anomaly').className = 'status-value enabled';
     } else {
-        keywordToggle.disabled = true;
-        anomalyToggle.disabled = true;
         keywordToggle.checked = false;
         anomalyToggle.checked = false;
-        document.getElementById('danger-signals-card').style.opacity = '0.5';
-        document.getElementById('anomaly-detection-card').style.opacity = '0.5';
+        document.getElementById('status-keyword').textContent = 'DISABLED';
+        document.getElementById('status-keyword').className = 'status-value disabled';
+        document.getElementById('status-anomaly').textContent = 'DISABLED';
+        document.getElementById('status-anomaly').className = 'status-value disabled';
     }
 }
 
@@ -376,43 +384,25 @@ function filterEvents(type) {
     currentFilter = type;
     document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
     event.target.classList.add('active');
-
-    // Get current events from Firebase and filter
-    database.ref('events').limitToLast(100).once('value', (snapshot) => {
-        const eventsObj = snapshot.val();
-        if (eventsObj) {
-            const events = Object.values(eventsObj).sort((a, b) =>
-                new Date(b.datetime) - new Date(a.datetime)
-            );
-            displayEvents(events);
-        }
-    });
+    displayEvents(allEventsCache);
 }
 
 function updateLastUpdate() {
-    const now = new Date();
-    document.getElementById('last-update').textContent = now.toLocaleTimeString();
+    if (statusCache && statusCache.last_update) {
+        const date = new Date(statusCache.last_update);
+        document.getElementById('last-update').textContent = date.toLocaleTimeString();
+    }
 }
 
 // ── Initialize App ──────────────────────────────────────────────────────────
 function initializeApp() {
     if (!currentUser) return;
-
-    // Setup real-time Firebase listeners
     setupFirebaseListeners();
-
-    // Start sync timer display
     startSyncTimer();
-
-    // Update toggles from current status
-    setTimeout(() => {
-        updateTogglesFromStatus();
-    }, 1000);
 }
 
 // ── On Load ─────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
-    // Check if user is already logged in
     if (currentUser) {
         initializeApp();
     }

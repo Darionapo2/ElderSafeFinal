@@ -44,3 +44,24 @@ def post_status(status_data: dict):
         log.debug("Status posted to Firebase")
     except Exception as e:
         log.error(f"Firebase status post failed: {e}")
+
+
+def push_status_now(state):
+    """Push current system state flags to Firebase status immediately."""
+    if not is_firebase_initialized():
+        log.debug("Firebase not initialized - status push skipped")
+        return
+
+    try:
+        from firebase_admin import db
+        from datetime import datetime
+        status = {
+            "armed": state.armed,
+            "keyword_spotting": state.keyword_spotting_enabled,
+            "anomaly_detection": state.anomaly_detection_enabled,
+            "last_update": datetime.now().isoformat(),
+        }
+        db.reference("status").set(status)
+        log.debug("Status pushed to Firebase")
+    except Exception as e:
+        log.error(f"Firebase status push failed: {e}")

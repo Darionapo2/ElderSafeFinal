@@ -16,6 +16,7 @@ from anomaly_detection import anomaly_detector_loop
 from sensor_loop import sensor_monitor_loop
 from api import create_api
 from firebase_commands import setup_firebase_command_listener, cleanup_old_commands
+from firebase import push_status_now
 from arduino.app_utils import App
 
 try:
@@ -68,6 +69,7 @@ if FIREBASE_AVAILABLE:
                 cred = credentials.Certificate(cred_dict)
                 firebase_admin.initialize_app(cred, {"databaseURL": db_url})
                 setup_firebase_command_listener(state)
+                push_status_now(state)
                 log.info("Firebase initialized")
             else:
                 log.info("Firebase credentials not configured - NFC sync will be skipped")
@@ -106,30 +108,12 @@ api_thread.start()
 
 if FIREBASE_AVAILABLE and firebase_admin._apps:
     log.info("Starting periodic status sync thread")
+
     def sync_status_loop():
-        from datetime import datetime
-        from csv_handler import read_csv
         import time
-
         while True:
-            try:
-                rows = read_csv()
-                status = {
-                    "armed": state.armed,
-                    "keyword_spotting": state.keyword_spotting_enabled,
-                    "anomaly_detection": state.anomaly_detection_enabled,
-                    "total_events": len(rows),
-                    "entries": sum(1 for r in rows if r.get("direction") == "entry"),
-                    "exits": sum(1 for r in rows if r.get("direction") == "exit"),
-                    "alarms": sum(1 for r in rows if r.get("direction") == "alarm"),
-                    "last_update": datetime.now().isoformat()
-                }
-                db.reference("status").set(status)
-                log.debug("Status synced")
-            except Exception as e:
-                log.debug(f"Status sync error: {e}")
-
             time.sleep(10)
+            push_status_now(state)
 
     status_thread = threading.Thread(target=sync_status_loop, daemon=True)
     status_thread.start()

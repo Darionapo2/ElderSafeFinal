@@ -15,7 +15,7 @@ class SystemState:
     """System state management with thread safety."""
 
     def __init__(self):
-        self.armed = True
+        self.armed = False
         self.sound_classification_enabled = True
         self.keyword_spotting_enabled = True
         self.anomaly_detection_enabled = True

@@ -9,7 +9,7 @@ from datetime import datetime
 from sensors import SensorMonitor
 from models import SystemState
 from events import save_entry_exit_event
-from firebase import is_firebase_initialized
+from firebase import is_firebase_initialized, push_status_now
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +56,10 @@ def sensor_monitor_loop(state: SystemState):
         log.warning(f"NFC tag detected: system {'arming' if armed else 'disarming'}")
 
         state.set_armed(armed)
+        state.set_keyword_spotting(armed)
+        state.set_anomaly_detection(armed)
         monitor.set_led_armed(armed)
+        push_status_now(state)
         post_nfc_command_to_firebase(armed)
 
     while True:

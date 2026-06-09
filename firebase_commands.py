@@ -83,33 +83,47 @@ def _command_polling_loop(state: SystemState):
 
 
 def execute_command(cmd_id: str, cmd_data: dict, state: SystemState):
-    """Execute command and update status in Firebase."""
+    """Execute command, sync hardware state, and push status to Firebase."""
     try:
         command_type = cmd_data.get("type")
         value = cmd_data.get("value")
 
-        # Mark as executing
         update_command_status(cmd_id, "executing", None)
         log.info(f"Executing command {cmd_id}: {command_type} = {value}")
 
-        # Execute based on type
+        try:
+            from sensors import SensorMonitor
+            monitor = SensorMonitor()
+        except Exception as e:
+            log.debug(f"SensorMonitor unavailable: {e}")
+            monitor = None
+
         if command_type == "set_armed":
-            state.set_armed(bool(value))
-            response = f"System {'armed' if value else 'disarmed'}"
-            try:
-                from sensors import SensorMonitor
-                monitor = SensorMonitor()
-                monitor.set_system_armed(bool(value))
-                log.info(f"System armed state set to {bool(value)}")
-            except Exception as e:
-                log.debug(f"System armed update failed: {e}")
+            new_armed = bool(value)
+            old_armed = state.armed
+            state.set_armed(new_armed)
+            state.set_keyword_spotting(new_armed)
+            state.set_anomaly_detection(new_armed)
+            if monitor and old_armed != new_armed:
+                monitor.set_system_armed(new_armed)
+            response = f"System {'armed' if new_armed else 'disarmed'}"
 
         elif command_type == "set_keyword_spotting":
+            old_armed = state.armed
             state.set_keyword_spotting(bool(value))
+            new_armed = state.keyword_spotting_enabled or state.anomaly_detection_enabled
+            state.set_armed(new_armed)
+            if monitor and old_armed != new_armed:
+                monitor.set_system_armed(new_armed)
             response = f"Keyword spotting {'enabled' if value else 'disabled'}"
 
         elif command_type == "set_anomaly_detection":
+            old_armed = state.armed
             state.set_anomaly_detection(bool(value))
+            new_armed = state.keyword_spotting_enabled or state.anomaly_detection_enabled
+            state.set_armed(new_armed)
+            if monitor and old_armed != new_armed:
+                monitor.set_system_armed(new_armed)
             response = f"Anomaly detection {'enabled' if value else 'disabled'}"
 
         elif command_type == "set_sound_classification":
@@ -118,6 +132,9 @@ def execute_command(cmd_id: str, cmd_data: dict, state: SystemState):
 
         else:
             raise ValueError(f"Unknown command type: {command_type}")
+
+        from firebase import push_status_now
+        push_status_now(state)
 
         update_command_status(cmd_id, "completed", response)
         log.info(f"Command {cmd_id} completed: {response}")
