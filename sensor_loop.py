@@ -38,18 +38,30 @@ def post_nfc_command_to_firebase(armed: bool):
         log.error(f"Firebase sync error: {e}")
 
 
-def sensor_monitor_loop(state: SystemState):
-    """Monitor sensors for entry/exit detection and NFC tags."""
+def sensor_monitor_loop(state: SystemState, absence_tracker=None):
+    """Monitor sensors for entry/exit detection and NFC tags.
+
+    The absence_tracker (Detector B) is notified on every entry/exit so the
+    dashboard clock and overdue-return logic stay in sync. Tracking runs even
+    when the system is disarmed; only event logging is gated by armed state.
+    """
     monitor = SensorMonitor()
     log.info("Sensor monitor started")
 
     def on_entry():
+        # Always close an open absence so the clock never gets stuck, even if the
+        # person returns while the system is disarmed.
+        if absence_tracker:
+            absence_tracker.on_entry()
         if state.armed:
             save_entry_exit_event(state, "entry")
 
     def on_exit():
+        # Only open a new absence while armed (when exits are actually logged).
         if state.armed:
             save_entry_exit_event(state, "exit")
+            if absence_tracker:
+                absence_tracker.on_exit()
 
     def on_nfc_change(armed: bool):
         """Handle NFC tag detection and system state sync."""

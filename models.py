@@ -6,7 +6,11 @@ import pickle
 import logging
 import threading
 from pathlib import Path
-from config import MODEL_PATH
+from config import (
+    MODEL_PATH,
+    DEFAULT_UNUSUAL_TIME_SENSITIVITY,
+    DEFAULT_RETURN_LATE_SENSITIVITY,
+)
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +24,9 @@ class SystemState:
         self.keyword_spotting_enabled = True
         self.anomaly_detection_enabled = True
         self.event_count = 0
+        # Live anomaly sensitivities (0..100), mirrored from Firebase /config/anomaly.
+        self.unusual_time_sensitivity = DEFAULT_UNUSUAL_TIME_SENSITIVITY
+        self.return_late_sensitivity = DEFAULT_RETURN_LATE_SENSITIVITY
         self.lock = threading.Lock()
 
     def increment_event(self):
@@ -47,6 +54,16 @@ class SystemState:
         """Enable/disable anomaly detection."""
         with self.lock:
             self.anomaly_detection_enabled = enabled
+
+    def set_unusual_time_sensitivity(self, value: float):
+        """Set unusual-time (Isolation Forest) sensitivity (0..100)."""
+        with self.lock:
+            self.unusual_time_sensitivity = max(0.0, min(100.0, float(value)))
+
+    def set_return_late_sensitivity(self, value: float):
+        """Set return-late (absence-duration) sensitivity (0..100)."""
+        with self.lock:
+            self.return_late_sensitivity = max(0.0, min(100.0, float(value)))
 
     def to_dict(self):
         """Return state as dictionary."""

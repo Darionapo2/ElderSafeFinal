@@ -77,6 +77,40 @@ def save_alarm_event(state: SystemState, alarm_type: str):
     })
 
 
+def save_anomaly_event(state: SystemState, anomaly_type: str, anomaly_score: float = 1.0, detail: str = ""):
+    """Log an anomaly event to CSV and Firebase (direction='anomaly').
+
+    Anomaly rows are ignored by retraining (which only uses entry/exit), so this
+    is safe to keep in the local door log alongside alarms.
+    """
+    now = datetime.now()
+    event_id = state.increment_event()
+
+    row = [
+        event_id,
+        now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+        now.strftime("%Y-%m-%d"),
+        now.strftime("%H:%M:%S"),
+        "anomaly",
+        anomaly_type,
+        0,
+        f"{anomaly_score:.3f}",
+    ]
+
+    append_csv(row)
+    log.warning(f"Anomaly event #{event_id}: {anomaly_type} at {now.strftime('%H:%M:%S')}")
+
+    post_event({
+        "id": event_id,
+        "datetime": row[1],
+        "direction": "anomaly",
+        "anomaly_type": anomaly_type,
+        "anomaly_score": anomaly_score,
+        "detail": detail,
+        "timestamp": now.isoformat(),
+    })
+
+
 def on_keyword_detected(state: SystemState):
     """Handler for 'aiuto' keyword detection."""
     if not state.armed:
@@ -88,10 +122,34 @@ def on_keyword_detected(state: SystemState):
     send_alert("Help Request", "Keyword 'aiuto' detected")
 
 
-def on_anomaly_detected(state: SystemState, event: dict, anomaly_score: float):
-    """Handler for anomaly detection in entry/exit patterns."""
-    log.warning(f"Anomaly detected: {event['direction']} at {event['time']} (score={anomaly_score:.3f})")
+def on_unusual_time_event(state: SystemState, event: dict, anomaly_score: float):
+    """Handler for Detector A (Isolation Forest): unusual-time entry/exit event."""
+    log.warning(
+        f"Unusual-time event: {event['direction']} at {event.get('time')} "
+        f"(score={anomaly_score:.3f})"
+    )
+    save_anomaly_event(
+        state,
+        "UNUSUAL_TIME",
+        anomaly_score=anomaly_score,
+        detail=f"Unusual {event['direction']} at {event.get('time')}",
+    )
+    send_alert("Anomaly: unusual time", f"Unusual {event['direction']} pattern detected")
+
+
+def on_overdue_absence(state: SystemState, absence: dict):
+    """Handler for Detector B: person has not returned within the expected window."""
+    exit_time = absence.get("exit_time", "")
+    expected = absence.get("expected_return_at", "")
+    log.warning(f"Overdue absence: no return since {exit_time}")
+    save_anomaly_event(
+        state,
+        "ABSENCE_OVERDUE",
+        anomaly_score=1.0,
+        detail=f"No return since {exit_time}",
+    )
     send_alert(
-        "Anomaly Detected",
-        f"Unusual {event['direction']} pattern detected"
+        "Anomaly: overdue return",
+        "Person has not returned within the expected time window.",
+        details=f"Out since {exit_time}\nExpected back by {expected}",
     )

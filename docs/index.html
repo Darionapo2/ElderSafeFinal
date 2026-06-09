@@ -81,6 +81,79 @@
                 </div>
             </section>
 
+            <!-- Active Absence Card (hidden until the person is out) -->
+            <section class="section absence-section hidden" id="absence-section">
+                <h2><i class="fas fa-person-walking-arrow-right"></i> Active Absence</h2>
+                <div class="absence-card" id="absence-card">
+                    <div class="absence-main">
+                        <div class="absence-clock-wrap">
+                            <div class="absence-clock-label">Time since exit</div>
+                            <div class="absence-clock" id="absence-clock">00:00:00</div>
+                            <div class="absence-status-badge" id="absence-status-badge">OUT</div>
+                        </div>
+                        <div class="absence-info">
+                            <div class="absence-info-row">
+                                <span class="absence-info-label"><i class="fas fa-door-open"></i> Out since</span>
+                                <span class="absence-info-value" id="absence-exit-time">--:--</span>
+                            </div>
+                            <div class="absence-info-row">
+                                <span class="absence-info-label"><i class="fas fa-house-chimney"></i> Expected back</span>
+                                <span class="absence-info-value" id="absence-expected-window">--:-- - --:--</span>
+                            </div>
+                            <div class="absence-info-row">
+                                <span class="absence-info-label"><i class="fas fa-triangle-exclamation"></i> Overdue after</span>
+                                <span class="absence-info-value" id="absence-deadline">--:--</span>
+                            </div>
+                            <div class="absence-confidence hidden" id="absence-confidence">
+                                <i class="fas fa-circle-info"></i> Estimate based on limited history
+                            </div>
+                        </div>
+                    </div>
+                    <div class="absence-progress">
+                        <div class="absence-progress-bar" id="absence-progress-bar"></div>
+                        <div class="absence-progress-marker" id="absence-progress-expected"></div>
+                    </div>
+                    <div class="absence-actions">
+                        <button class="btn-dismiss" id="absence-dismiss-btn" onclick="dismissAbsence()">
+                            <i class="fas fa-bell-slash"></i> Dismiss alert
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Anomaly Detection Controls -->
+            <section class="section">
+                <h2><i class="fas fa-brain"></i> Anomaly Detection</h2>
+                <div class="anomaly-controls">
+                    <div class="slider-control">
+                        <div class="slider-header">
+                            <label for="slider-unusual-time"><i class="fas fa-clock"></i> Unusual-time sensitivity</label>
+                            <span class="slider-value" id="slider-unusual-time-value">50</span>
+                        </div>
+                        <input type="range" min="0" max="100" value="50" id="slider-unusual-time"
+                               class="range-input" oninput="onSliderInput('unusual')">
+                        <div class="slider-hint">Higher = flags more entry/exit events at odd hours</div>
+                    </div>
+                    <div class="slider-control">
+                        <div class="slider-header">
+                            <label for="slider-return-late"><i class="fas fa-hourglass-half"></i> Return-late sensitivity</label>
+                            <span class="slider-value" id="slider-return-late-value">50</span>
+                        </div>
+                        <input type="range" min="0" max="100" value="50" id="slider-return-late"
+                               class="range-input" oninput="onSliderInput('return')">
+                        <div class="slider-hint">Higher = alerts sooner when the person is overdue</div>
+                    </div>
+                </div>
+                <div class="model-status-bar">
+                    <div class="model-status-text" id="model-status-text">
+                        <i class="fas fa-circle-nodes"></i> Model status loading...
+                    </div>
+                    <button class="btn-small btn-retrain" id="retrain-btn" onclick="retrainModel()">
+                        <i class="fas fa-rotate"></i> Retrain model now
+                    </button>
+                </div>
+            </section>
+
             <!-- Stats Section -->
             <section class="section stats-section">
                 <h2><i class="fas fa-chart-line"></i> Statistics</h2>
@@ -104,7 +177,7 @@
                 </div>
             </section>
 
-            <!-- Events Timeline -->
+            <!-- Events Timeline (horizontal) -->
             <section class="section events-section">
                 <div class="section-header">
                     <h2><i class="fas fa-history"></i> Event Timeline</h2>
@@ -113,9 +186,10 @@
                         <button class="filter-btn" onclick="filterEvents('entry')"><i class="fas fa-sign-in-alt"></i> Entries</button>
                         <button class="filter-btn" onclick="filterEvents('exit')"><i class="fas fa-sign-out-alt"></i> Exits</button>
                         <button class="filter-btn" onclick="filterEvents('alarm')"><i class="fas fa-exclamation-circle"></i> Alarms</button>
+                        <button class="filter-btn" onclick="filterEvents('anomaly')"><i class="fas fa-brain"></i> Anomalies</button>
                     </div>
                 </div>
-                <div id="events-list" class="events-list">
+                <div id="timeline" class="timeline-horizontal">
                     <p class="loading"><i class="fas fa-spinner fa-spin"></i> Loading events...</p>
                 </div>
             </section>

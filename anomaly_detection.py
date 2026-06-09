@@ -1,53 +1,31 @@
 """
-Anomaly detection for entry/exit patterns using Isolation Forest.
+Detector A: unusual-time entry/exit events using the Isolation Forest.
+
+Scores the most recent entry/exit event and, when it looks anomalous for its
+time of day, raises an alert. The expected-return logic lives in the
+absence-duration model (Detector B); this detector only flags events whose
+timing is unusual relative to the learned baseline.
 """
 
 import logging
 import time
-import numpy as np
+
 from csv_handler import read_csv
-from models import SystemState
-from config import ANOMALY_THRESHOLD, ANOMALY_CHECK_INTERVAL
-from events import on_anomaly_detected
-from datetime import datetime
+from models import SystemState, load_isolation_forest
+from config import ANOMALY_CHECK_INTERVAL, unusual_time_threshold
+from events import on_unusual_time_event
+from ml_features import extract_if_features
 
 log = logging.getLogger(__name__)
 
-
-def extract_features(event):
-    """Extract feature vector from event for Isolation Forest."""
-    dt = datetime.strptime(event["datetime"], "%Y-%m-%d %H:%M:%S.%f")
-
-    # Feature 1: hour of day (0-23)
-    hour_of_day = dt.hour
-
-    # Feature 2: day of week (0=Monday, 6=Sunday)
-    day_of_week = dt.weekday()
-
-    # Feature 3: time since last event (seconds)
-    time_since_last = float(event["delta_ms"]) / 1000.0
-
-    # Feature 4: event type (0=entry, 1=exit)
-    event_type = 1 if event["direction"] == "exit" else 0
-
-    # Feature 5: time of day bucket (0=6-12, 1=12-18, 2=18-00, 3=00-06)
-    if 6 <= hour_of_day < 12:
-        time_bucket = 0
-    elif 12 <= hour_of_day < 18:
-        time_bucket = 1
-    elif 18 <= hour_of_day < 24:
-        time_bucket = 2
-    else:  # 00-06
-        time_bucket = 3
-
-    # Feature 6: is_weekend (0=no, 1=yes)
-    is_weekend = 1 if day_of_week >= 5 else 0
-
-    return np.array([[hour_of_day, day_of_week, time_since_last, event_type, time_bucket, is_weekend]])
+# Avoid re-alerting on the same event across consecutive checks.
+_last_alerted_event_id = None
 
 
 def check_anomaly(isolation_forest, state: SystemState):
-    """Check for anomalies in recent entry/exit events."""
+    """Check the most recent entry/exit event for an unusual-time anomaly."""
+    global _last_alerted_event_id
+
     if isolation_forest is None:
         return
 
@@ -55,36 +33,49 @@ def check_anomaly(isolation_forest, state: SystemState):
     if len(rows) < 2:
         return
 
-    recent_events = [r for r in rows[-10:] if r.get("direction") in ["entry", "exit"]]
+    recent_events = [r for r in rows[-10:] if r.get("direction") in ("entry", "exit")]
     if not recent_events:
         return
 
     event = recent_events[-1]
+    event_id = event.get("id")
+
+    # Skip if we already alerted on this exact event.
+    if event_id is not None and event_id == _last_alerted_event_id:
+        return
+
+    threshold = unusual_time_threshold(state.unusual_time_sensitivity)
 
     try:
-        feature = extract_features(event)
+        feature = extract_if_features(event)
         prediction = isolation_forest.predict(feature)
         anomaly_score = -isolation_forest.score_samples(feature)[0]
 
-        if prediction[0] == -1 and anomaly_score > ANOMALY_THRESHOLD:
-            on_anomaly_detected(state, event, anomaly_score)
+        if prediction[0] == -1 and anomaly_score > threshold:
+            _last_alerted_event_id = event_id
+            on_unusual_time_event(state, event, anomaly_score)
 
     except Exception as e:
-        log.error(f"Anomaly detection failed: {e}")
+        log.error(f"Unusual-time detection failed: {e}")
 
 
 def anomaly_detector_loop(isolation_forest, state: SystemState):
-    """Periodically check for anomalies in entry/exit patterns."""
+    """Periodically check for unusual-time anomalies in entry/exit patterns."""
     if isolation_forest is None:
-        log.warning("Isolation Forest model not loaded - anomaly detection disabled")
+        log.warning("Isolation Forest model not loaded - unusual-time detection disabled")
         return
 
-    log.info("Anomaly detector started")
+    log.info("Unusual-time detector started")
 
+    model = isolation_forest
     while True:
         try:
             time.sleep(ANOMALY_CHECK_INTERVAL)
             if state.anomaly_detection_enabled:
-                check_anomaly(isolation_forest, state)
+                # Reload from disk so retrained models take effect without restart.
+                reloaded = load_isolation_forest()
+                if reloaded is not None:
+                    model = reloaded
+                check_anomaly(model, state)
         except Exception as e:
-            log.error(f"Anomaly detector failed: {e}")
+            log.error(f"Unusual-time detector failed: {e}")

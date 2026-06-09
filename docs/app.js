@@ -20,9 +20,12 @@ let isConnected = false;
 let currentFilter = 'all';
 let statusCache = {};
 let allEventsCache = [];
+let absenceCache = null;
 let commandInProgress = {};
 let lastSyncTime = Date.now();
 let syncTimerInterval = null;
+let clockInterval = null;
+const sliderWriteTimers = {};
 
 // ── UI Elements ─────────────────────────────────────────────────────────────
 const authContainer = document.getElementById('auth-container');
@@ -38,7 +41,7 @@ const loginBtn = document.getElementById('login-btn');
 const registerBtn = document.getElementById('register-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const userEmailSpan = document.getElementById('user-email-text');
-const eventsList = document.getElementById('events-list');
+const timelineEl = document.getElementById('timeline');
 const syncSecondsDisplay = document.getElementById('sync-seconds');
 
 // ── Auth Handlers ───────────────────────────────────────────────────────────
@@ -176,12 +179,12 @@ function setupFirebaseListeners() {
         }
     });
 
-    // Events listener: drives stats and timeline (no limit — counts are authoritative)
+    // Events listener: drives stats and timeline
     database.ref('events').on('value', (snapshot) => {
         const eventsObj = snapshot.val();
         if (eventsObj) {
             allEventsCache = Object.values(eventsObj).sort((a, b) =>
-                new Date(b.datetime) - new Date(a.datetime)
+                new Date(a.datetime) - new Date(b.datetime)
             );
         } else {
             allEventsCache = [];
@@ -190,11 +193,27 @@ function setupFirebaseListeners() {
         updateStats();
         updateSyncTime();
     });
+
+    // Absence listener: drives the live clock card
+    database.ref('monitoring/absence').on('value', (snapshot) => {
+        absenceCache = snapshot.val();
+        renderAbsence();
+        updateSyncTime();
+    });
+
+    // Model status listener
+    database.ref('model/status').on('value', (snapshot) => {
+        updateModelStatus(snapshot.val());
+    });
+
+    // Config listener: keeps sliders in sync (authoritative from Firebase)
+    database.ref('config/anomaly').on('value', (snapshot) => {
+        updateSlidersFromConfig(snapshot.val());
+    });
 }
 
 // ── Status Display ──────────────────────────────────────────────────────────
-// Single source of truth: always reads from statusCache (populated by Firebase listener).
-// Called on every status update — overrides any local optimistic state.
+// Single source of truth: always reads from statusCache (Firebase listener).
 function updateStatusDisplay() {
     if (!statusCache) return;
 
@@ -202,19 +221,16 @@ function updateStatusDisplay() {
     const keyword = statusCache.keyword_spotting;
     const anomaly = statusCache.anomaly_detection;
 
-    // System toggle
     document.getElementById('status-armed').textContent = armed ? 'ARMED' : 'DISARMED';
     document.getElementById('status-armed').className = `status-value ${armed ? 'armed' : 'disarmed'}`;
     document.getElementById('toggle-armed').checked = armed;
 
-    // Keyword spotting
     document.getElementById('status-keyword').textContent = keyword ? 'ENABLED' : 'DISABLED';
     document.getElementById('status-keyword').className = `status-value ${keyword ? 'enabled' : 'disabled'}`;
     document.getElementById('toggle-keyword').checked = keyword;
     document.getElementById('toggle-keyword').disabled = !armed;
     document.getElementById('danger-signals-card').style.opacity = armed ? '1' : '0.5';
 
-    // Anomaly detection
     document.getElementById('status-anomaly').textContent = anomaly ? 'ENABLED' : 'DISABLED';
     document.getElementById('status-anomaly').className = `status-value ${anomaly ? 'enabled' : 'disabled'}`;
     document.getElementById('toggle-anomaly').checked = anomaly;
@@ -223,67 +239,267 @@ function updateStatusDisplay() {
 }
 
 // ── Stats ───────────────────────────────────────────────────────────────────
-// Counts derived from Firebase events — no CSV dependency.
 function updateStats() {
     document.getElementById('stat-total').textContent = allEventsCache.length;
     document.getElementById('stat-entries').textContent = allEventsCache.filter(e => e.direction === 'entry').length;
     document.getElementById('stat-exits').textContent = allEventsCache.filter(e => e.direction === 'exit').length;
-    document.getElementById('stat-alarms').textContent = allEventsCache.filter(e => e.direction === 'alarm').length;
+    document.getElementById('stat-alarms').textContent =
+        allEventsCache.filter(e => e.direction === 'alarm' || e.direction === 'anomaly').length;
 }
 
-// ── Events Display ──────────────────────────────────────────────────────────
+// ── Horizontal Event Timeline ───────────────────────────────────────────────
 function displayEvents(events = []) {
     const filtered = currentFilter === 'all'
         ? events
         : events.filter(e => e.direction === currentFilter);
 
     if (!filtered || filtered.length === 0) {
-        eventsList.innerHTML = '<p class="loading"><i class="fas fa-inbox"></i> No events</p>';
+        timelineEl.innerHTML = '<p class="loading"><i class="fas fa-inbox"></i> No events</p>';
         return;
     }
 
-    eventsList.innerHTML = filtered.slice(0, 50).map(event => createEventElement(event)).join('');
+    // Keep the most recent 50, rendered oldest -> newest (left -> right).
+    const recent = filtered.slice(-50);
+    timelineEl.innerHTML = recent.map(createTimelineNode).join('');
+
+    // Auto-scroll to the newest event on the right.
+    timelineEl.scrollLeft = timelineEl.scrollWidth;
 }
 
-function createEventElement(event) {
+function createTimelineNode(event) {
     const dt = new Date(event.datetime);
-    const time = dt.toLocaleTimeString();
-    const direction = event.direction.toUpperCase();
+    const time = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const day = dt.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
 
-    let icon = '📍';
+    let icon = '<i class="fas fa-location-dot"></i>';
+    let typeClass = '';
+    let label = event.direction.toUpperCase();
 
     if (event.direction === 'entry') {
-        icon = '<i class="fas fa-arrow-right" style="color: #10b981;"></i>';
+        icon = '<i class="fas fa-arrow-right-to-bracket"></i>';
+        typeClass = 'entry';
+        label = 'ENTRY';
     } else if (event.direction === 'exit') {
-        icon = '<i class="fas fa-arrow-left" style="color: #f59e0b;"></i>';
+        icon = '<i class="fas fa-arrow-right-from-bracket"></i>';
+        typeClass = 'exit';
+        label = 'EXIT';
     } else if (event.direction === 'alarm') {
-        icon = '<i class="fas fa-bell" style="color: #ef4444;"></i>';
+        icon = '<i class="fas fa-bell"></i>';
+        typeClass = 'alarm';
+        label = 'ALARM';
+    } else if (event.direction === 'anomaly') {
+        icon = '<i class="fas fa-brain"></i>';
+        typeClass = 'anomaly';
+        label = event.anomaly_type === 'ABSENCE_OVERDUE' ? 'OVERDUE' : 'UNUSUAL';
     }
 
-    const anomalyScore = parseFloat(event.anomaly_score || 0);
-    const anomalyHtml = anomalyScore > 0.5
-        ? `<div class="event-anomaly"><i class="fas fa-exclamation-triangle"></i> Anomaly: ${anomalyScore.toFixed(2)}</div>`
-        : '';
-
     return `
-        <div class="event-item">
-            <div class="event-icon">${icon}</div>
-            <div class="event-details">
-                <div class="event-time">${time}</div>
-                <div class="event-direction">${direction}</div>
-                ${anomalyHtml}
-            </div>
+        <div class="tl-node ${typeClass}">
+            <div class="tl-dot">${icon}</div>
+            <div class="tl-time">${time}</div>
+            <div class="tl-label">${label}</div>
+            <div class="tl-day">${day}</div>
         </div>
     `;
 }
 
-// ── Controls ────────────────────────────────────────────────────────────────
+// ── Active Absence Card + Live Clock ────────────────────────────────────────
+function renderAbsence() {
+    const section = document.getElementById('absence-section');
+
+    if (!absenceCache || !absenceCache.active) {
+        section.classList.add('hidden');
+        return;
+    }
+
+    section.classList.remove('hidden');
+
+    const exitDt = new Date(absenceCache.exit_time);
+    document.getElementById('absence-exit-time').textContent =
+        exitDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const ws = new Date(absenceCache.window_start);
+    const we = new Date(absenceCache.window_end);
+    const fmt = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('absence-expected-window').textContent = `${fmt(ws)} - ${fmt(we)}`;
+
+    const deadline = new Date(absenceCache.late_deadline_at);
+    document.getElementById('absence-deadline').textContent = fmt(deadline);
+
+    const confidenceEl = document.getElementById('absence-confidence');
+    confidenceEl.classList.toggle('hidden', absenceCache.confidence !== 'low');
+
+    const badge = document.getElementById('absence-status-badge');
+    const status = absenceCache.status || 'out';
+    badge.textContent = status.toUpperCase();
+    badge.className = `absence-status-badge ${status}`;
+
+    const dismissBtn = document.getElementById('absence-dismiss-btn');
+    dismissBtn.classList.toggle('hidden', status === 'dismissed');
+
+    tickClock();
+}
+
+function tickClock() {
+    if (!absenceCache || !absenceCache.active) return;
+
+    const exitDt = new Date(absenceCache.exit_time);
+    const deadline = new Date(absenceCache.late_deadline_at);
+    const expected = new Date(absenceCache.expected_return_at);
+    const now = new Date();
+
+    // Elapsed time since exit (counts up).
+    const elapsedMs = Math.max(0, now - exitDt);
+    document.getElementById('absence-clock').textContent = formatDuration(elapsedMs);
+
+    // Progress from exit (0%) to deadline (100%).
+    const totalMs = deadline - exitDt;
+    const pct = totalMs > 0 ? Math.min(100, Math.max(0, ((now - exitDt) / totalMs) * 100)) : 100;
+    const bar = document.getElementById('absence-progress-bar');
+    bar.style.width = `${pct}%`;
+
+    // Expected-return marker position.
+    const expPct = totalMs > 0 ? Math.min(100, Math.max(0, ((expected - exitDt) / totalMs) * 100)) : 100;
+    document.getElementById('absence-progress-expected').style.left = `${expPct}%`;
+
+    // Color the card by urgency, unless dismissed.
+    const card = document.getElementById('absence-card');
+    if (absenceCache.status === 'dismissed') {
+        card.className = 'absence-card dismissed';
+    } else if (now >= deadline) {
+        card.className = 'absence-card overdue';
+    } else if (pct >= 80) {
+        card.className = 'absence-card approaching';
+    } else {
+        card.className = 'absence-card out';
+    }
+}
+
+function formatDuration(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+    const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+    const s = String(totalSec % 60).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+}
+
+// ── Anomaly Config Sliders ──────────────────────────────────────────────────
+function onSliderInput(which) {
+    const id = which === 'unusual' ? 'slider-unusual-time' : 'slider-return-late';
+    const valueId = which === 'unusual' ? 'slider-unusual-time-value' : 'slider-return-late-value';
+    const key = which === 'unusual' ? 'unusual_time_sensitivity' : 'return_late_sensitivity';
+
+    const value = parseInt(document.getElementById(id).value, 10);
+    document.getElementById(valueId).textContent = value;
+
+    // Debounce writes so dragging the slider does not spam Firebase.
+    if (sliderWriteTimers[key]) clearTimeout(sliderWriteTimers[key]);
+    sliderWriteTimers[key] = setTimeout(() => {
+        database.ref('config/anomaly').update({ [key]: value });
+    }, 400);
+}
+
+function updateSlidersFromConfig(config) {
+    if (!config) return;
+
+    const unusual = document.getElementById('slider-unusual-time');
+    const ret = document.getElementById('slider-return-late');
+
+    // Do not fight the user while they are actively dragging a slider.
+    if (config.unusual_time_sensitivity != null && document.activeElement !== unusual) {
+        unusual.value = config.unusual_time_sensitivity;
+        document.getElementById('slider-unusual-time-value').textContent = config.unusual_time_sensitivity;
+    }
+    if (config.return_late_sensitivity != null && document.activeElement !== ret) {
+        ret.value = config.return_late_sensitivity;
+        document.getElementById('slider-return-late-value').textContent = config.return_late_sensitivity;
+    }
+}
+
+// ── Model Status ────────────────────────────────────────────────────────────
+function updateModelStatus(status) {
+    const el = document.getElementById('model-status-text');
+    if (!status) {
+        el.innerHTML = '<i class="fas fa-circle-nodes"></i> Model status unavailable';
+        return;
+    }
+
+    const trained = status.last_trained_at
+        ? new Date(status.last_trained_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : 'never';
+
+    el.innerHTML = `<i class="fas fa-circle-nodes"></i> Last trained: <strong>${trained}</strong> ` +
+        `&middot; ${status.training_samples || 0} samples ` +
+        `(real ${status.real_events_in_window || 0}, synthetic ${status.synthetic_in_window || 0}) ` +
+        `&middot; window ${status.training_window_days || 0}d`;
+}
+
+// ── Command Helpers ─────────────────────────────────────────────────────────
+function sendCommandAwait(commandType, value, timeoutMs = 30000) {
+    return new Promise((resolve) => {
+        const cmdId = Date.now().toString();
+        database.ref(`commands/${cmdId}`).set({
+            type: commandType,
+            value: value,
+            source: "dashboard",
+            timestamp: new Date().toISOString(),
+            status: "pending"
+        });
+
+        const start = Date.now();
+        const interval = setInterval(() => {
+            database.ref(`commands/${cmdId}`).once('value', (snapshot) => {
+                const cmd = snapshot.val();
+                if (cmd && cmd.status !== "pending" && cmd.status !== "executing") {
+                    clearInterval(interval);
+                    resolve(cmd);
+                }
+            });
+            if (Date.now() - start > timeoutMs) {
+                clearInterval(interval);
+                resolve({ status: "timeout", response: "No response from device" });
+            }
+        }, 300);
+    });
+}
+
+async function retrainModel() {
+    const btn = document.getElementById('retrain-btn');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-rotate fa-spin"></i> Retraining...';
+
+    const cmd = await sendCommandAwait('retrain_model', true);
+
+    if (cmd.status === 'completed') {
+        btn.innerHTML = '<i class="fas fa-check"></i> Done';
+    } else {
+        btn.innerHTML = '<i class="fas fa-triangle-exclamation"></i> Failed';
+        console.error('Retrain:', cmd.response);
+    }
+    setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    }, 2500);
+}
+
+async function dismissAbsence() {
+    const btn = document.getElementById('absence-dismiss-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-hourglass-half"></i> Dismissing...';
+
+    await sendCommandAwait('dismiss_absence', true);
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-bell-slash"></i> Dismiss alert';
+}
+
+// ── System Controls (existing) ──────────────────────────────────────────────
 function sendCommand(toggleId, commandType, value) {
     const cmdId = Date.now().toString();
     const toggleElement = document.getElementById(toggleId);
 
     if (commandInProgress[commandType]) {
-        console.log(`Command ${commandType} already in progress`);
         if (toggleElement) toggleElement.checked = !value;
         return;
     }
@@ -299,8 +515,6 @@ function sendCommand(toggleId, commandType, value) {
         status: "pending"
     });
 
-    // Poll for Arduino acknowledgement; Firebase status listener will have
-    // already updated the UI by the time this fires in most cases.
     let checkCount = 0;
     const checkInterval = setInterval(() => {
         checkCount++;
@@ -315,8 +529,6 @@ function sendCommand(toggleId, commandType, value) {
                     console.error(`Command failed: ${cmd.error}`);
                     if (toggleElement) toggleElement.checked = !value;
                 }
-
-                // Re-apply authoritative state from Firebase
                 updateStatusDisplay();
             }
         });
@@ -325,7 +537,6 @@ function sendCommand(toggleId, commandType, value) {
             clearInterval(checkInterval);
             commandInProgress[commandType] = false;
             if (toggleElement) toggleElement.disabled = false;
-            console.warn(`Command ${commandType} timeout`);
             if (toggleElement) toggleElement.checked = !value;
         }
     }, 200);
@@ -334,12 +545,9 @@ function sendCommand(toggleId, commandType, value) {
 function toggleArmed() {
     const armed = document.getElementById('toggle-armed').checked;
     sendCommand('toggle-armed', 'set_armed', armed);
-    // Immediate optimistic visual feedback while waiting for Arduino round-trip
     applyArmedVisuals(armed);
 }
 
-// Applies immediate visual state for armed/disarmed without waiting for Firebase.
-// updateStatusDisplay() will correct this with authoritative state on next sync.
 function applyArmedVisuals(armed) {
     const keywordToggle = document.getElementById('toggle-keyword');
     const anomalyToggle = document.getElementById('toggle-anomaly');
@@ -353,7 +561,6 @@ function applyArmedVisuals(armed) {
     document.getElementById('anomaly-detection-card').style.opacity = armed ? '1' : '0.5';
 
     if (armed) {
-        // Optimistic: system ON re-enables both features (Arduino will confirm)
         keywordToggle.checked = true;
         anomalyToggle.checked = true;
         document.getElementById('status-keyword').textContent = 'ENABLED';
@@ -399,6 +606,10 @@ function initializeApp() {
     if (!currentUser) return;
     setupFirebaseListeners();
     startSyncTimer();
+
+    // Live clock tick (independent of Firebase pushes).
+    if (clockInterval) clearInterval(clockInterval);
+    clockInterval = setInterval(tickClock, 1000);
 }
 
 // ── On Load ─────────────────────────────────────────────────────────────────

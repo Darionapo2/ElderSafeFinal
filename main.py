@@ -13,10 +13,12 @@ from models import SystemState, load_isolation_forest
 from csv_handler import init_csv
 from audio_bricks import setup_audio_bricks
 from anomaly_detection import anomaly_detector_loop
+from absence_tracker import AbsenceTracker, deadline_loop
+from retraining import retrain_all, retraining_loop
 from sensor_loop import sensor_monitor_loop
 from api import create_api
 from firebase_commands import setup_firebase_command_listener, cleanup_old_commands
-from firebase import push_status_now
+from firebase import push_status_now, push_model_status, read_anomaly_config
 from arduino.app_utils import App
 
 try:
@@ -36,6 +38,13 @@ init_csv()
 isolation_forest = load_isolation_forest()
 
 state = SystemState()
+
+# Build both detector models from the current windowed history (synthetic seed +
+# real CSV). This also creates absence_stats.pkl on first run.
+log.info("Building anomaly models from windowed history")
+initial_model_status = retrain_all(push_status=False)
+
+absence_tracker = AbsenceTracker(state)
 
 try:
     from sensors import SensorMonitor
@@ -68,8 +77,16 @@ if FIREBASE_AVAILABLE:
             if all([cred_dict.get(k) for k in ["project_id", "private_key", "client_email"]]) and db_url:
                 cred = credentials.Certificate(cred_dict)
                 firebase_admin.initialize_app(cred, {"databaseURL": db_url})
-                setup_firebase_command_listener(state)
+                setup_firebase_command_listener(state, absence_tracker)
                 push_status_now(state)
+                push_model_status(initial_model_status)
+                # Load dashboard-configured sensitivities, if already present.
+                initial_config = read_anomaly_config()
+                if initial_config:
+                    if "unusual_time_sensitivity" in initial_config:
+                        state.set_unusual_time_sensitivity(initial_config["unusual_time_sensitivity"])
+                    if "return_late_sensitivity" in initial_config:
+                        state.set_return_late_sensitivity(initial_config["return_late_sensitivity"])
                 log.info("Firebase initialized")
             else:
                 log.info("Firebase credentials not configured - NFC sync will be skipped")
@@ -82,13 +99,23 @@ mic = setup_audio_bricks(state)
 log.info("Starting sensor monitor thread")
 sensor_thread = threading.Thread(
     target=sensor_monitor_loop,
-    args=(state,),
+    args=(state, absence_tracker),
     daemon=True
 )
 sensor_thread.start()
 
+log.info("Starting absence deadline thread")
+deadline_thread = threading.Thread(
+    target=deadline_loop,
+    args=(absence_tracker,),
+    daemon=True
+)
+deadline_thread.start()
+
+# Reload the IF model that retrain_all just rebuilt at startup.
+isolation_forest = load_isolation_forest()
 if isolation_forest is not None:
-    log.info("Starting anomaly detector thread")
+    log.info("Starting unusual-time detector thread")
     anomaly_thread = threading.Thread(
         target=anomaly_detector_loop,
         args=(isolation_forest, state),
@@ -96,7 +123,11 @@ if isolation_forest is not None:
     )
     anomaly_thread.start()
 else:
-    log.info("Isolation Forest not loaded - anomaly detection disabled")
+    log.info("Isolation Forest not loaded - unusual-time detection disabled")
+
+log.info("Starting daily retraining thread")
+retrain_thread = threading.Thread(target=retraining_loop, daemon=True)
+retrain_thread.start()
 
 log.info(f"Starting REST API on port {API_PORT}")
 api_app = create_api(state)
