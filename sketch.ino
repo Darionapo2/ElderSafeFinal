@@ -64,8 +64,12 @@ void beep_disarm() {
 }
 
 void beep_alarm() {
-  for (int i = 0; i < 6; i++) {
-    tone(buzzerPin, 2600); delay(80); noTone(buzzerPin);
+  // Continuous alarm for 3 seconds (triggered by "aiuto" keyword)
+  unsigned long startTime = millis();
+  while (millis() - startTime < 3000) {  // 3 seconds
+    tone(buzzerPin, 2600);
+    delay(80);
+    noTone(buzzerPin);
     delay(50);
   }
 }
