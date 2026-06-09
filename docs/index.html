@@ -3,154 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ElderSafeFinal - Monitoring Dashboard</title>
+    <title>ElderSafeFinal - Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Auth Container -->
     <div id="auth-container" class="auth-container">
-        <div class="auth-wrapper">
-            <div class="auth-box">
-                <div class="auth-header">
-                    <i class="fas fa-shield-heart"></i>
-                    <h1>ElderSafeFinal</h1>
-                    <p>Safety Monitoring System</p>
-                </div>
+        <div class="auth-box">
+            <h1><i class="fas fa-shield-heart"></i> ElderSafeFinal</h1>
+            <p>Smart monitoring and safety system</p>
 
-                <!-- Login Form -->
-                <div id="login-form" class="form active">
-                    <h2>Sign In</h2>
-                    <div class="input-group">
-                        <i class="fas fa-envelope"></i>
-                        <input type="email" id="email" placeholder="Email address" required>
-                    </div>
-                    <div class="input-group">
-                        <i class="fas fa-lock"></i>
-                        <input type="password" id="password" placeholder="Password" required>
-                    </div>
-                    <button id="login-btn" class="btn-primary btn-large">
-                        <i class="fas fa-sign-in-alt"></i> Sign In
-                    </button>
-                    <p class="toggle-form">Don't have an account? <a href="javascript:void(0)" onclick="toggleAuth(event)">Create one</a></p>
-                    <div id="login-error" class="error"></div>
-                </div>
+            <div id="login-form" class="form">
+                <h2><i class="fas fa-sign-in-alt"></i> Sign In</h2>
+                <input type="email" id="email" placeholder="📧 Email address" required>
+                <input type="password" id="password" placeholder="🔐 Password" required>
+                <button id="login-btn" class="btn-primary"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+                <p class="toggle-form">Don't have an account? <a href="javascript:void(0)" onclick="toggleAuth(event)">Create one</a></p>
+                <div id="login-error" class="error"></div>
+            </div>
 
-                <!-- Register Form -->
-                <div id="register-form" class="form">
-                    <h2>Create Account</h2>
-                    <div class="input-group">
-                        <i class="fas fa-envelope"></i>
-                        <input type="email" id="register-email" placeholder="Email address" required>
-                    </div>
-                    <div class="input-group">
-                        <i class="fas fa-lock"></i>
-                        <input type="password" id="register-password" placeholder="Password (min 6 chars)" required>
-                    </div>
-                    <div class="input-group">
-                        <i class="fas fa-lock"></i>
-                        <input type="password" id="register-password-confirm" placeholder="Confirm password" required>
-                    </div>
-                    <button id="register-btn" class="btn-primary btn-large">
-                        <i class="fas fa-user-plus"></i> Create Account
-                    </button>
-                    <p class="toggle-form">Already have an account? <a href="javascript:void(0)" onclick="toggleAuth(event)">Sign In</a></p>
-                    <div id="register-error" class="error"></div>
-                </div>
+            <div id="register-form" class="form hidden">
+                <h2><i class="fas fa-user-plus"></i> Create Account</h2>
+                <input type="email" id="register-email" placeholder="📧 Email address" required>
+                <input type="password" id="register-password" placeholder="🔐 Password (min 6 characters)" required>
+                <input type="password" id="register-password-confirm" placeholder="🔐 Confirm password" required>
+                <button id="register-btn" class="btn-primary"><i class="fas fa-user-plus"></i> Create Account</button>
+                <p class="toggle-form">Already have an account? <a href="javascript:void(0)" onclick="toggleAuth(event)">Sign in</a></p>
+                <div id="register-error" class="error"></div>
             </div>
         </div>
     </div>
 
-    <!-- App Container -->
     <div id="app-container" class="app-container hidden">
-        <!-- Header -->
         <header class="header">
-            <div class="header-content">
-                <div class="header-left">
-                    <h1><i class="fas fa-shield-heart"></i> ElderSafeFinal</h1>
-                </div>
-                <div class="header-center">
-                    <div id="connection-status" class="connection-status">
-                        <span class="status-dot"></span>
-                        <span>Connecting...</span>
-                    </div>
-                </div>
-                <div class="header-right">
-                    <span id="user-email" class="user-email"></span>
-                    <button id="logout-btn" class="btn-icon">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </button>
-                </div>
+            <div class="header-left">
+                <h1><i class="fas fa-shield-heart"></i> ElderSafeFinal</h1>
+            </div>
+            <div class="connection-status">
+                <span class="status-dot"></span>
+                <span>Connecting...</span>
+            </div>
+            <div class="header-right">
+                <span id="user-email" class="user-email"><i class="fas fa-user-circle"></i> <span id="user-email-text"></span></span>
+                <button id="logout-btn" class="btn-small"><i class="fas fa-sign-out-alt"></i> Sign Out</button>
             </div>
         </header>
 
-        <!-- Main Content -->
         <main class="main-content">
-            <!-- Timer Section -->
-            <section class="section timer-section">
-                <div class="timer-container">
-                    <div class="timer-status" id="timer-status">At Home</div>
-                    <div class="timer-display" id="timer-display">00:00:00</div>
-                    <div class="timer-info">
-                        <div class="timer-info-item">
-                            <span class="label">Last Exit:</span>
-                            <span id="last-exit-time" class="value">--:--</span>
-                        </div>
-                        <div class="timer-info-item">
-                            <span class="label">Last Entry:</span>
-                            <span id="last-entry-time" class="value">--:--</span>
-                        </div>
-                    </div>
-                    <div id="timer-alert" class="timer-alert hidden">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <span id="alert-message">Person away too long - possible danger!</span>
-                    </div>
-                </div>
-            </section>
-
-            <!-- System Status Section -->
+            <!-- Status Section -->
             <section class="section status-section">
-                <h2><i class="fas fa-cogs"></i> System Status</h2>
+                <h2><i class="fas fa-sliders-h"></i> System Controls</h2>
                 <div class="status-grid">
                     <div class="status-card">
-                        <div class="card-header">
-                            <i class="fas fa-power-off"></i>
-                            <span>System</span>
-                        </div>
-                        <div id="status-armed" class="status-value armed">Armed</div>
+                        <div class="status-label"><i class="fas fa-power-off"></i> System</div>
+                        <div id="status-armed" class="status-value armed">ARMED</div>
                         <label class="switch">
                             <input type="checkbox" id="toggle-armed" onchange="toggleArmed()">
                             <span class="slider"></span>
                         </label>
                     </div>
                     <div class="status-card">
-                        <div class="card-header">
-                            <i class="fas fa-microphone"></i>
-                            <span>Keyword Spotting</span>
-                        </div>
-                        <div id="status-keyword" class="status-value enabled">Enabled</div>
+                        <div class="status-label"><i class="fas fa-microphone"></i> Keyword Spotting</div>
+                        <div id="status-keyword" class="status-value enabled">ENABLED</div>
                         <label class="switch">
                             <input type="checkbox" id="toggle-keyword" onchange="toggleKeywordSpotting()">
                             <span class="slider"></span>
                         </label>
                     </div>
                     <div class="status-card">
-                        <div class="card-header">
-                            <i class="fas fa-volume-up"></i>
-                            <span>Sound Detection</span>
-                        </div>
-                        <div id="status-sound" class="status-value enabled">Enabled</div>
+                        <div class="status-label"><i class="fas fa-volume-up"></i> Sound Classification</div>
+                        <div id="status-sound" class="status-value enabled">ENABLED</div>
                         <label class="switch">
                             <input type="checkbox" id="toggle-sound" onchange="toggleSoundClassification()">
                             <span class="slider"></span>
                         </label>
                     </div>
                     <div class="status-card">
-                        <div class="card-header">
-                            <i class="fas fa-brain"></i>
-                            <span>Anomaly Detection</span>
-                        </div>
-                        <div id="status-anomaly" class="status-value enabled">Enabled</div>
+                        <div class="status-label"><i class="fas fa-brain"></i> Anomaly Detection</div>
+                        <div id="status-anomaly" class="status-value enabled">ENABLED</div>
                         <label class="switch">
                             <input type="checkbox" id="toggle-anomaly" onchange="toggleAnomalyDetection()">
                             <span class="slider"></span>
@@ -159,60 +89,54 @@
                 </div>
             </section>
 
-            <!-- Statistics Section -->
+            <!-- Stats Section -->
             <section class="section stats-section">
                 <h2><i class="fas fa-chart-line"></i> Statistics</h2>
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="stat-icon"><i class="fas fa-event"></i></div>
                         <div class="stat-number" id="stat-total">0</div>
-                        <div class="stat-label">Total Events</div>
+                        <div class="stat-label"><i class="fas fa-calendar-check"></i> Total Events</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-icon"><i class="fas fa-arrow-right"></i></div>
                         <div class="stat-number" id="stat-entries">0</div>
-                        <div class="stat-label">Entries</div>
+                        <div class="stat-label"><i class="fas fa-arrow-right"></i> Entries</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-icon"><i class="fas fa-arrow-left"></i></div>
                         <div class="stat-number" id="stat-exits">0</div>
-                        <div class="stat-label">Exits</div>
+                        <div class="stat-label"><i class="fas fa-arrow-left"></i> Exits</div>
                     </div>
-                    <div class="stat-card">
-                        <div class="stat-icon"><i class="fas fa-bell"></i></div>
+                    <div class="stat-card alert">
                         <div class="stat-number" id="stat-alarms">0</div>
-                        <div class="stat-label">Alarms</div>
+                        <div class="stat-label"><i class="fas fa-bell"></i> Alarms</div>
                     </div>
                 </div>
             </section>
 
-            <!-- Events Section -->
+            <!-- Events Timeline -->
             <section class="section events-section">
                 <div class="section-header">
-                    <h2><i class="fas fa-history"></i> Recent Activity</h2>
+                    <h2><i class="fas fa-history"></i> Event Timeline</h2>
                     <div class="filter-buttons">
-                        <button class="filter-btn active" onclick="filterEvents('all')">All</button>
-                        <button class="filter-btn" onclick="filterEvents('entry')">Entries</button>
-                        <button class="filter-btn" onclick="filterEvents('exit')">Exits</button>
-                        <button class="filter-btn" onclick="filterEvents('alarm')">Alarms</button>
+                        <button class="filter-btn active" onclick="filterEvents('all')"><i class="fas fa-list"></i> All</button>
+                        <button class="filter-btn" onclick="filterEvents('entry')"><i class="fas fa-sign-in-alt"></i> Entries</button>
+                        <button class="filter-btn" onclick="filterEvents('exit')"><i class="fas fa-sign-out-alt"></i> Exits</button>
+                        <button class="filter-btn" onclick="filterEvents('alarm')"><i class="fas fa-exclamation-circle"></i> Alarms</button>
                     </div>
                 </div>
                 <div id="events-list" class="events-list">
                     <p class="loading"><i class="fas fa-spinner fa-spin"></i> Loading events...</p>
                 </div>
             </section>
-
-            <!-- Last Update -->
-            <footer class="app-footer">
-                <p>Last update: <span id="last-update">--:--:--</span></p>
-            </footer>
         </main>
+
+        <footer class="footer">
+            <i class="fas fa-shield-heart"></i> ElderSafeFinal • Last update: <span id="last-update">--:--:--</span>
+        </footer>
     </div>
 
-    <!-- Firebase Script (Original Working Version) -->
-    <script src="https://www.gstatic.com/firebaseapp/9.22.2/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebaseapp/9.22.2/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebaseapp/9.22.2/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

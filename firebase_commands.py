@@ -6,7 +6,7 @@ Polls Firebase for pending commands every 2 seconds.
 import logging
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from firebase_admin import db
 from models import SystemState
 
@@ -65,7 +65,7 @@ def _command_polling_loop(state: SystemState):
                     timestamp_str = cmd_data.get("timestamp", "")
                     if timestamp_str:
                         cmd_timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-                        age_seconds = (datetime.now(datetime.timezone.utc) - cmd_timestamp).total_seconds()
+                        age_seconds = (datetime.now(timezone.utc) - cmd_timestamp).total_seconds()
                         if age_seconds > 300:
                             log.debug(f"Skipping old command {cmd_id}")
                             _processed_commands.add(cmd_id)
@@ -146,7 +146,7 @@ def update_command_status(cmd_id: str, status: str, response: str = None):
 def cleanup_old_commands(max_age_hours: int = 24):
     """Delete commands older than max_age_hours to prevent database bloat."""
     try:
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         ref = db.reference("commands")
         result = ref.get()
 
