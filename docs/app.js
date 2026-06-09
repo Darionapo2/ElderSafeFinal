@@ -203,6 +203,8 @@ function updateTogglesFromStatus() {
         document.getElementById('toggle-keyword').checked = statusCache.keyword_spotting;
         document.getElementById('toggle-anomaly').checked = statusCache.anomaly_detection;
     }
+
+    updateDependentToggles();
 }
 
 function updateStatusDisplay() {
@@ -213,7 +215,6 @@ function updateStatusDisplay() {
 
     const statuses = {
         'status-keyword': statusCache.keyword_spotting,
-        'status-sound': statusCache.sound_classification,
         'status-anomaly': statusCache.anomaly_detection,
     };
 
@@ -339,6 +340,27 @@ function sendCommand(toggleId, commandType, value) {
 function toggleArmed() {
     const armed = document.getElementById('toggle-armed').checked;
     sendCommand('toggle-armed', 'set_armed', armed);
+    updateDependentToggles();
+}
+
+function updateDependentToggles() {
+    const armedCheckbox = document.getElementById('toggle-armed');
+    const keywordToggle = document.getElementById('toggle-keyword');
+    const anomalyToggle = document.getElementById('toggle-anomaly');
+
+    if (armedCheckbox.checked) {
+        keywordToggle.disabled = false;
+        anomalyToggle.disabled = false;
+        document.getElementById('danger-signals-card').style.opacity = '1';
+        document.getElementById('anomaly-detection-card').style.opacity = '1';
+    } else {
+        keywordToggle.disabled = true;
+        anomalyToggle.disabled = true;
+        keywordToggle.checked = false;
+        anomalyToggle.checked = false;
+        document.getElementById('danger-signals-card').style.opacity = '0.5';
+        document.getElementById('anomaly-detection-card').style.opacity = '0.5';
+    }
 }
 
 function toggleKeywordSpotting() {

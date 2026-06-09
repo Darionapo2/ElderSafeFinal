@@ -62,27 +62,19 @@
                             <span class="slider"></span>
                         </label>
                     </div>
-                    <div class="status-card">
-                        <div class="status-label"><i class="fas fa-microphone"></i> Keyword Spotting</div>
+                    <div class="status-card" id="danger-signals-card">
+                        <div class="status-label"><i class="fas fa-microphone"></i> Danger Signals Spotting</div>
                         <div id="status-keyword" class="status-value enabled">ENABLED</div>
                         <label class="switch">
-                            <input type="checkbox" id="toggle-keyword" onchange="toggleKeywordSpotting()">
+                            <input type="checkbox" id="toggle-keyword" onchange="toggleKeywordSpotting()" disabled>
                             <span class="slider"></span>
                         </label>
                     </div>
-                    <div class="status-card">
-                        <div class="status-label"><i class="fas fa-volume-up"></i> Sound Classification</div>
-                        <div id="status-sound" class="status-value enabled">ENABLED</div>
-                        <label class="switch">
-                            <input type="checkbox" id="toggle-sound" onchange="toggleSoundClassification()">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                    <div class="status-card">
+                    <div class="status-card" id="anomaly-detection-card">
                         <div class="status-label"><i class="fas fa-brain"></i> Anomaly Detection</div>
                         <div id="status-anomaly" class="status-value enabled">ENABLED</div>
                         <label class="switch">
-                            <input type="checkbox" id="toggle-anomaly" onchange="toggleAnomalyDetection()">
+                            <input type="checkbox" id="toggle-anomaly" onchange="toggleAnomalyDetection()" disabled>
                             <span class="slider"></span>
                         </label>
                     </div>
