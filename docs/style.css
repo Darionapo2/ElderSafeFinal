@@ -1197,13 +1197,61 @@ input:disabled + .slider {
     margin-top: 2px;
 }
 
+/* ── MOBILE REFINEMENTS ──────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-    .absence-clock {
-        font-size: 38px;
+    /* Header stacks cleanly: logo, sync status, then user + logout */
+    .header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 14px 16px;
     }
 
-    .absence-main {
-        gap: 20px;
+    .header-left {
+        justify-content: center;
+    }
+
+    .header-right {
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .sync-status {
+        justify-content: center;
+        width: 100%;
+        font-size: 11px;
+    }
+
+    .user-email {
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 62%;
+    }
+
+    /* Anomaly controls */
+    .anomaly-controls {
+        gap: 16px;
+    }
+
+    .slider-control {
+        padding: 16px;
+    }
+
+    /* Bigger touch targets for the sliders */
+    .range-input {
+        height: 8px;
+    }
+
+    .range-input::-webkit-slider-thumb {
+        width: 24px;
+        height: 24px;
+    }
+
+    .range-input::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
     }
 
     .model-status-bar {
@@ -1211,7 +1259,91 @@ input:disabled + .slider {
         align-items: stretch;
     }
 
+    .model-status-text {
+        text-align: center;
+    }
+
     .btn-retrain {
         width: 100%;
+    }
+
+    /* Absence card stacks vertically and centers */
+    .absence-main {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+    }
+
+    .absence-clock-wrap,
+    .absence-info {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .absence-clock {
+        font-size: 40px;
+    }
+
+    .absence-info-label {
+        font-size: 12px;
+    }
+
+    .absence-actions {
+        text-align: stretch;
+    }
+
+    .btn-dismiss {
+        width: 100%;
+    }
+
+    /* Tighter timeline nodes */
+    .tl-node {
+        min-width: 80px;
+    }
+}
+
+@media (max-width: 480px) {
+    .section h2 {
+        font-size: 16px;
+    }
+
+    .absence-clock {
+        font-size: 34px;
+    }
+
+    .absence-info-row {
+        padding: 8px 0;
+    }
+
+    .absence-info-value {
+        font-size: 14px;
+    }
+
+    .absence-status-badge {
+        font-size: 11px;
+    }
+
+    .slider-value {
+        font-size: 16px;
+    }
+
+    .model-status-text {
+        font-size: 12px;
+    }
+
+    /* Compact timeline for very small screens */
+    .tl-node {
+        min-width: 72px;
+        padding-top: 20px;
+    }
+
+    .tl-dot {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+    }
+
+    .tl-node::before {
+        top: 32px;
     }
 }
