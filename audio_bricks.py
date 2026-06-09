@@ -49,6 +49,10 @@ def setup_audio_bricks(state: SystemState):
         spotter = KeywordSpotting(mic=mic, confidence=CONFIDENCE, debounce_sec=DEBOUNCE_SEC)
 
         def on_aiuto():
+            if not state.armed:
+                log.debug("Keyword 'aiuto' detected but system is disarmed - ignoring")
+                return
+
             if state.keyword_spotting_enabled:
                 log.warning("KEYWORD DETECTED: 'aiuto' - ACTIVATING ALARM")
                 on_keyword_detected(state)

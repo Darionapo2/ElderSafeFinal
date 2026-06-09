@@ -235,7 +235,7 @@ body {
     gap: 24px;
 }
 
-.connection-status {
+.sync-status {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -243,20 +243,20 @@ body {
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
+    color: var(--text-light);
+    background: rgba(99, 102, 241, 0.05);
     transition: var(--transition);
 }
 
-.status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--disabled);
-    animation: pulse 2s infinite;
+.sync-status i {
+    font-size: 11px;
+    opacity: 0.7;
+    animation: sync-spin 2s linear infinite;
 }
 
-.status-dot.connected {
-    background: var(--success);
-    animation: pulse-success 2s infinite;
+@keyframes sync-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 @keyframes pulse {

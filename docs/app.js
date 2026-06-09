@@ -21,6 +21,8 @@ let isConnected = false;
 let currentFilter = 'all';
 let statusCache = {};
 let commandInProgress = {};
+let lastSyncTime = Date.now();
+let syncTimerInterval = null;
 
 // ── UI Elements ─────────────────────────────────────────────────────────────
 const authContainer = document.getElementById('auth-container');
@@ -37,8 +39,7 @@ const registerBtn = document.getElementById('register-btn');
 const logoutBtn = document.getElementById('logout-btn');
 const userEmailSpan = document.getElementById('user-email-text');
 const eventsList = document.getElementById('events-list');
-const connectionStatus = document.querySelector('.connection-status span');
-const statusDot = document.querySelector('.status-dot');
+const syncSecondsDisplay = document.getElementById('sync-seconds');
 
 // ── Auth Handlers ───────────────────────────────────────────────────────────
 function toggleAuth(event) {
@@ -143,6 +144,22 @@ function showError(elementId, message) {
     }, 5000);
 }
 
+// ── Sync Timer ──────────────────────────────────────────────────────────────
+function updateSyncTime() {
+    lastSyncTime = Date.now();
+}
+
+function startSyncTimer() {
+    if (syncTimerInterval) clearInterval(syncTimerInterval);
+
+    syncTimerInterval = setInterval(() => {
+        const secondsAgo = Math.floor((Date.now() - lastSyncTime) / 1000);
+        if (syncSecondsDisplay) {
+            syncSecondsDisplay.textContent = secondsAgo;
+        }
+    }, 1000);
+}
+
 // ── Firebase Listeners ──────────────────────────────────────────────────────
 function setupFirebaseListeners() {
     // Listen to Firebase for real-time updates
@@ -156,7 +173,8 @@ function setupFirebaseListeners() {
             updateStatusDisplay();
             updateStats();
             updateLastUpdate();
-            updateTogglesFromStatus();  // Sync toggles without sending new commands
+            updateTogglesFromStatus();
+            updateSyncTime();
             isConnected = true;
         }
     });
@@ -169,6 +187,7 @@ function setupFirebaseListeners() {
                 new Date(b.datetime) - new Date(a.datetime)
             );
             displayEvents(events);
+            updateSyncTime();
         }
     });
 }
@@ -360,6 +379,9 @@ function initializeApp() {
 
     // Setup real-time Firebase listeners
     setupFirebaseListeners();
+
+    // Start sync timer display
+    startSyncTimer();
 
     // Update toggles from current status
     setTimeout(() => {
